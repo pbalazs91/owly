@@ -44,7 +44,7 @@ Az integráció nem fogad be azonosítatlan nyilvános webhookot, és nem kezeli
 
 ## Ellenőrzések és próba
 
-64 célzott teszt, TypeScript-ellenőrzés és teljes Next.js-build lefutott. A `scripts/verify-rocketsender-local.ts` külön memóriában futó PostgreSQL/PGlite-adatbázist készít, alkalmazza a valódi hozzáadó migrációt, megőrzi a korábbi próba-beállítást, majd ellenőrzi a kiküldés/válasz/ismételt válasz/duplikált esemény/időbélyeg eseteket. Eredménye `.local-test/result.json`. A PGlite többkapcsolatos burkolója nem helyettesíti a natív PostgreSQL terheléses vizsgálatát.
+66 célzott teszt, TypeScript-ellenőrzés és teljes Next.js-build lefutott. A `scripts/verify-rocketsender-local.ts` külön memóriában futó PostgreSQL/PGlite-adatbázist készít, alkalmazza a valódi hozzáadó migrációt, megőrzi a korábbi próba-beállítást, majd ellenőrzi a kiküldés/válasz/ismételt válasz/duplikált esemény/időbélyeg eseteket. Eredménye `.local-test/result.json`. A PGlite többkapcsolatos burkolója nem helyettesíti a natív PostgreSQL terheléses vizsgálatát.
 
 Helyi reprodukció: `npm install --prefix .local-test @electric-sql/pglite @electric-sql/pglite-socket --ignore-scripts`, majd `npx tsx scripts/verify-rocketsender-local.ts`. A próbafolyamat kizárólag saját, helyi, kitalált adatbázist hoz létre; nem használ meglévő éles adatbázis-URL-t.
 
