@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { CompanyNameLookup } from "@/components/company-name-lookup";
 import {
   Search,
   Plus,
@@ -201,6 +202,10 @@ export default function CustomersPage() {
   useEffect(() => {
     fetchCustomers();
   }, [fetchCustomers]);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("customer");
+    if (id) fetchCustomerDetail(id);
+  }, [fetchCustomerDetail]);
 
   // ---------- Actions ----------
 
@@ -820,6 +825,7 @@ export default function CustomersPage() {
                 </div>
 
                 {/* Tags */}
+                {!editMode && (selectedCustomer.phone || selectedCustomer.whatsapp) && <div className="px-4 py-3 border-b border-owly-border"><CompanyNameLookup key={selectedCustomer.id} customerId={selectedCustomer.id} onAccepted={() => { fetchCustomerDetail(selectedCustomer.id); fetchCustomers(pagination.page); }} /></div>}
                 <div className="px-4 py-3 border-b border-owly-border">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-semibold text-owly-text-light uppercase tracking-wider">
