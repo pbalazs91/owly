@@ -7,5 +7,16 @@ const before = /await page\.goto\(WhatsWebURL,\s*\{\s*waitUntil: 'load',\s*timeo
 if ((source.match(before) || []).length !== 1) {
   throw new Error('Unexpected WhatsApp client source; review the navigation patch');
 }
-fs.writeFileSync(file, source.replace(before, "await page.goto(WhatsWebURL, {\n            waitUntil: 'domcontentloaded',\n            timeout: 60000,"));
-console.log('Applied bounded WhatsApp initial navigation');
+const setAgent = 'await page.setUserAgent(this.options.userAgent);';
+if (source.split(setAgent).length !== 2) {
+  throw new Error('Unexpected WhatsApp user agent setup; review the compatibility patch');
+}
+const patched = source
+  .replace(before, "await page.goto(WhatsWebURL, {\n            waitUntil: 'domcontentloaded',\n            timeout: 60000,")
+  // The upstream default advertises Chrome 101. Use the installed browser's
+  // actual version so WhatsApp does not see an obsolete browser.
+  .replace(setAgent, `const browserVersion = (await browser.version()).split('/').pop();
+            const currentUserAgent = this.options.userAgent.replace(/(?:Headless)?Chrome\\/[\\d.]+/, 'Chrome/' + browserVersion);
+            await page.setUserAgent(currentUserAgent);`);
+fs.writeFileSync(file, patched);
+console.log('Applied bounded WhatsApp navigation and current Chromium user agent');
