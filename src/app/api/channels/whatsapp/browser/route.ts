@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
     supportsControl: config.browserProtocol === 2,
     pending: !!config.browserControlRevision && config.browserControlRevision !== config.browserAppliedRevision,
     requestedEnabled: config.browserDesiredEnabled === true,
+    alwaysAllowed: config.browserAlwaysAllowed || {},
   });
 }
 
@@ -42,6 +43,17 @@ export async function POST(request: NextRequest) {
     const channel = await prisma.channel.findUnique({ where: { type: "whatsapp" } });
     const config = (channel?.config || {}) as Record<string, unknown>;
 
+    if (body.action === "allowPhone" || body.action === "removePhone") {
+      const auth = await requireAuth(request, "channels:update");
+      if (!isAuthenticated(auth)) return auth;
+      const phone = typeof body.phone === "string" ? body.phone.replace(/[+\s()-]/g, "") : "";
+      if (!/^[1-9]\d{7,14}$/.test(phone)) return json({ error: "Nemzetközi formátumú telefonszámot adj meg." }, 400);
+      const allowed = { ...((config.browserAlwaysAllowed || {}) as Record<string, string>) };
+      if (body.action === "allowPhone") allowed[phone + "@c.us"] = "+" + phone;
+      else delete allowed[phone + "@c.us"];
+      await prisma.channel.update({ where: { type: "whatsapp" }, data: { config: { ...config, browserAlwaysAllowed: allowed } } });
+      return json({ ok: true });
+    }
     if (body.action === "processing") {
       const auth = await requireAuth(request, "channels:update");
       if (!isAuthenticated(auth)) return auth;
@@ -97,7 +109,7 @@ export async function POST(request: NextRequest) {
           ...(pending ? {} : { browserDesiredEnabled: enabled, browserAppliedRevision: typeof body.controlRevision === "string" ? body.controlRevision : "" }),
         },
       } });
-      return json({ ok: true, ...(pending ? { desiredEnabled: config.browserDesiredEnabled === true, controlRevision: config.browserControlRevision } : {}) });
+      return json({ ok: true, alwaysAllowed: config.browserAlwaysAllowed || {}, ...(pending ? { desiredEnabled: config.browserDesiredEnabled === true, controlRevision: config.browserControlRevision } : {}) });
     }
 
     if (body.action === "incoming") {
