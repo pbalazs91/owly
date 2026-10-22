@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
+import { fetchList } from "@/lib/fetch-list";
 import {
   Send,
   Loader2,
@@ -66,13 +67,10 @@ export default function KnowledgeTestPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const [categoriesRes, entriesRes] = await Promise.all([
-        fetch("/api/knowledge/categories"),
-        fetch("/api/knowledge/entries"),
+      const [categories, entries] = await Promise.all([
+        fetchList<{ id: string }>("/api/knowledge/categories"),
+        fetchList<{ isActive: boolean; updatedAt: string }>("/api/knowledge/entries"),
       ]);
-
-      const categories = categoriesRes.ok ? await categoriesRes.json() : [];
-      const entries = entriesRes.ok ? await entriesRes.json() : [];
 
       const activeEntries = entries.filter((e: { isActive: boolean }) => e.isActive);
       const lastUpdated =
@@ -91,6 +89,7 @@ export default function KnowledgeTestPage() {
       });
     } catch (err) {
       console.error("Failed to fetch KB stats:", err);
+      setError(err instanceof Error ? err.message : "A tudásbázis adatai nem tölthetők be.");
     }
   }, []);
 
