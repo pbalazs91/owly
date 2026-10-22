@@ -84,8 +84,11 @@ async function handle(message, sender) {
   if (message.type === 'GET_STATE') { const settings = await state(); return { ...settings, token: settings.token ? 'saved' : '' }; }
   if (message.type === 'OPEN_WA') {
     const tabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
-    const tab = tabs.length ? await chrome.tabs.update(tabs[0].id, { active: true }) : await chrome.tabs.create({ url: 'https://web.whatsapp.com/' });
-    await save({ primaryTab: tab.id, waStatus: 'loading', error: '' }); return { ok: true };
+    const tab = tabs.length ? await chrome.tabs.update(tabs[0].id, { active: true }) : await chrome.tabs.create({ url: 'https://web.whatsapp.com/', active: true });
+    await save({ primaryTab: tab.id, waStatus: 'loading', error: '' });
+    // Selecting a tab does not bring its containing Chrome window to the front.
+    if (Number.isInteger(tab.windowId)) await chrome.windows.update(tab.windowId, { focused: true });
+    return { ok: true };
   }
   if (message.type === 'SAVE') {
     const settings = await state();
