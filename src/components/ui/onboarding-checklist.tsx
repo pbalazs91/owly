@@ -83,9 +83,11 @@ export function OnboardingChecklist() {
         {
           id: "ai",
           title: "AI configured",
-          description: "Connect your AI provider with an API key",
+          description: settings.aiProvider === "ollama" ? "Kapcsold össze a helyi Ollamát a Chrome-bővítménnyel" : "Connect your AI provider with an API key",
           href: "/settings",
-          completed: !!settings.aiApiKey && settings.aiApiKey.length > 0,
+          completed: settings.aiProvider === "ollama"
+            ? connectedChannels.some((channel: { type: string; config?: { mode?: string } }) => channel.type === "whatsapp" && channel.config?.mode === "browser")
+            : settings.aiProvider === "openai" && !!settings.aiApiKey && settings.aiApiKey.length > 0,
           icon: Bot,
         },
         {
