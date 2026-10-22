@@ -17,7 +17,13 @@ export async function GET(request: NextRequest) {
     const channelMap = new Map(channels.map((ch) => [ch.type, ch]));
     const result = CHANNEL_TYPES.map((type) => {
       const existing = channelMap.get(type);
-      if (existing) return existing;
+      if (existing) {
+        const config = existing.config as Record<string, unknown>;
+        if (config.mode === "browser" && (typeof config.browserLastSeen !== "string" || Date.now() - Date.parse(config.browserLastSeen) > 90000)) {
+          return { ...existing, status: "disconnected", isActive: false };
+        }
+        return existing;
+      }
       return {
         id: null,
         type,
