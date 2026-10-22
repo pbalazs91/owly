@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 export function BrowserWhatsApp() {
-  const [connection, setConnection] = useState({ paired: false, online: false, status: "disconnected" });
+  const [connection, setConnection] = useState({ paired: false, online: false, status: "disconnected", enabled: false, requestedEnabled: false, pending: false, supportsControl: false });
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -47,8 +47,21 @@ export function BrowserWhatsApp() {
     } catch { /* Keyboard copying remains available. */ }
     setCopyNotice("A kód kijelölve. Nyomd meg a Ctrl+C billentyűket, majd a bővítményben a Ctrl+V-t.");
   };
+  const setProcessing = async (enabled: boolean) => {
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/channels/whatsapp/browser", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "processing", enabled }) });
+      if (!response.ok) throw new Error("A feldolgozás állapota nem állítható be.");
+      await refresh();
+    } catch (error) { setError(error instanceof Error ? error.message : "Hiba történt."); }
+    finally { setBusy(false); }
+  };
   const labels: Record<string, string> = { connected: "WhatsApp csatlakoztatva", qr_ready: "A QR-kód a saját Chrome-odban vár beolvasásra", loading: "A WhatsApp Web töltődik", disconnected: "A bővítmény még nincs csatlakoztatva" };
   return <div className="space-y-4 text-sm">
+    <div className="flex items-center justify-between gap-3 rounded-lg border border-owly-border p-4">
+      <div><p className="font-medium">WhatsApp üzenetfeldolgozás</p><p className="text-xs text-owly-text-light">{connection.pending ? "Várakozás a bővítmény visszajelzésére…" : !connection.online ? "A bővítmény nem érhető el" : !connection.supportsControl ? "Töltsd újra a frissített bővítményt" : connection.enabled ? "Bekapcsolva · a bővítmény visszaigazolta" : "Kikapcsolva · a WhatsApp ettől még csatlakozhat"}</p></div>
+      <button type="button" role="switch" aria-label="WhatsApp üzenetfeldolgozás" aria-checked={connection.pending ? connection.requestedEnabled : connection.enabled} disabled={busy || !connection.online || !connection.supportsControl || connection.pending} onClick={() => setProcessing(!connection.enabled)} className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${connection.pending ? connection.requestedEnabled ? "bg-owly-primary" : "bg-owly-border" : connection.enabled ? "bg-owly-primary" : "bg-owly-border"}`}><span className={`mt-0.5 inline-block h-5 w-5 rounded-full bg-white transition-transform ${(connection.pending ? connection.requestedEnabled : connection.enabled) ? "translate-x-5" : "translate-x-0.5"}`} /></button>
+    </div>
     <div role="status" className="rounded-lg bg-owly-bg border border-owly-border p-4">{labels[connection.status] || labels.disconnected}</div>
     <p>A WhatsApp Web és az Ollama a saját gépeden fut. A QR-kód a Chrome-ban megnyitott WhatsApp-oldalon jelenik meg; itt nem kell szerveres böngészőt indítani.</p>
     <ol className="list-decimal pl-5 space-y-2">
