@@ -386,16 +386,16 @@ export default function AdminPage() {
               <div>
                 <h3 className="font-semibold text-owly-text">Admin Users</h3>
                 <p className="text-xs text-owly-text-light mt-0.5">
-                  {users.length} / 1 account
+                  {users.length} / 2 accounts
                 </p>
               </div>
               <button
                 disabled
-                title="This installation allows one account only"
+                title="Create the additional account on the registration page"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-owly-primary hover:bg-owly-primary-dark rounded-lg transition-colors"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Account limit: 1
+                Account limit: 2
               </button>
             </div>
 
