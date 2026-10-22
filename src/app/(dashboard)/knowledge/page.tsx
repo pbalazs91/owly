@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
+import { fetchList } from "@/lib/fetch-list";
 import {
   BookOpen,
   Plus,
@@ -96,6 +97,7 @@ export default function KnowledgeBasePage() {
   const [entries, setEntries] = useState<KnowledgeEntry[]>([]);
   const [loadingCategories, setLoadingCategories] = useState(true);
   const [loadingEntries, setLoadingEntries] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   // Category modal
   const [showCategoryModal, setShowCategoryModal] = useState(false);
@@ -118,13 +120,11 @@ export default function KnowledgeBasePage() {
   const fetchCategories = useCallback(async () => {
     setLoadingCategories(true);
     try {
-      const res = await fetch("/api/knowledge/categories");
-      if (res.ok) {
-        const data = await res.json();
-        setCategories(data);
-      }
+      setCategories(await fetchList<CategoryWithCount>("/api/knowledge/categories"));
+      setLoadError("");
     } catch (err) {
       console.error("Failed to fetch categories:", err);
+      setLoadError(err instanceof Error ? err.message : "A kategóriák nem tölthetők be.");
     } finally {
       setLoadingCategories(false);
     }
@@ -133,13 +133,11 @@ export default function KnowledgeBasePage() {
   const fetchEntries = useCallback(async (categoryId: string) => {
     setLoadingEntries(true);
     try {
-      const res = await fetch(`/api/knowledge/entries?categoryId=${categoryId}`);
-      if (res.ok) {
-        const data = await res.json();
-        setEntries(data);
-      }
+      setEntries(await fetchList<KnowledgeEntry>(`/api/knowledge/entries?categoryId=${encodeURIComponent(categoryId)}`));
+      setLoadError("");
     } catch (err) {
       console.error("Failed to fetch entries:", err);
+      setLoadError(err instanceof Error ? err.message : "A bejegyzések nem tölthetők be.");
     } finally {
       setLoadingEntries(false);
     }
@@ -302,6 +300,7 @@ export default function KnowledgeBasePage() {
         description="Manage your AI's knowledge and responses"
       />
 
+      {loadError && <p role="alert" className="px-5 py-3 text-sm text-red-600">{loadError}</p>}
       <div className="flex-1 overflow-hidden flex">
         {/* ================= LEFT PANEL: Categories ================= */}
         <div className="w-80 flex-shrink-0 border-r border-owly-border bg-owly-surface flex flex-col">
