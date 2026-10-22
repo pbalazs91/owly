@@ -440,6 +440,7 @@ function AISection({
       { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku" },
     ],
     ollama: [
+      { value: "llama3.2:3b", label: "Llama 3.2 3B (helyi, telepítve)" },
       { value: "llama3", label: "Llama 3" },
       { value: "mistral", label: "Mistral" },
       { value: "codellama", label: "Code Llama" },
@@ -467,8 +468,7 @@ function AISection({
       </FormField>
       {data.aiProvider !== "openai" && (
         <p role="status" className="text-sm text-owly-danger">
-          A választás elmenthető, de ebben a verzióban az automatikus válaszadás csak OpenAI-val működik.
-          Az Ollama és a Claude még nincs bekötve; a mentés önmagában nem aktiválja őket.
+          {data.aiProvider === "ollama" ? "Az Ollama a Chrome-bővítményen keresztül, a saját gépeden válaszol. Itt válaszd ki a gépeden telepített modellt, majd a bővítményben kapcsold be a kapcsolatot. A mentés önmagában nem indítja el a böngészőkapcsolatot." : "A Claude ebben a verzióban még nincs bekötve a válaszadáshoz."}
         </p>
       )}
       <FormField label="Model" description="The specific model to use for AI responses.">
@@ -836,7 +836,7 @@ export default function SettingsPage() {
         return next;
       });
       addToast("success", activeTab === "ai" && saved.aiProvider !== "openai"
-        ? "A választás elmentve. Ez az AI-szolgáltató még nincs bekötve, ezért nem fog válaszolni."
+        ? saved.aiProvider === "ollama" ? "Elmentve. Az Ollama a bekapcsolt Chrome-bővítményen keresztül működik." : "Elmentve. Ez az AI-szolgáltató még nincs bekötve."
         : "Beállítások elmentve.");
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "A mentés nem sikerült. Próbáld újra.");
