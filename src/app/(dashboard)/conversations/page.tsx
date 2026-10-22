@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { fetchList } from "@/lib/fetch-list";
 import {
   MessageCircle,
   Mail,
@@ -104,10 +105,7 @@ export default function ConversationsPage() {
       if (statusFilter !== "all") params.set("status", statusFilter);
       if (searchQuery.trim()) params.set("search", searchQuery.trim());
 
-      const res = await fetch(`/api/conversations?${params.toString()}`);
-      if (!res.ok) throw new Error("Failed to load conversations");
-      const data = await res.json();
-      setConversations(data);
+      setConversations(await fetchList<ConversationData>(`/api/conversations?${params.toString()}`));
     } catch (error) {
       console.error("Failed to fetch conversations:", error);
       setFetchError("Failed to load conversations. Please try refreshing the page.");
