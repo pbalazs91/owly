@@ -132,6 +132,10 @@ export default function ConversationsPage() {
   useEffect(() => {
     fetchConversations();
   }, [fetchConversations]);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("conversation");
+    if (id) { setSelectedId(id); setMobileShowDetail(true); }
+  }, []);
 
   useEffect(() => {
     if (selectedId) {
