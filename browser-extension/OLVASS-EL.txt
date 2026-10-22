@@ -1,0 +1,43 @@
+OWLY – WHATSAPP ÉS HELYI AI / 0.1.0
+
+1. A Chrome címsorába írd: chrome://extensions
+2. Jobb felül kapcsold be a Fejlesztői módot.
+3. Kattints a Kicsomagolt bővítmény betöltése gombra, és válaszd ki ezt
+   a mappát (amelyben a manifest.json található). A ZIP-et előbb csomagold ki.
+4. A Chrome bővítmények menüjében nyisd meg az Owly – WhatsApp és helyi AI-t.
+5. Kattints a WhatsApp Web megnyitása gombra. Ha a WhatsApp már nyitva volt
+   a telepítés előtt, frissítsd a lapot. A QR-kód a WhatsApp saját oldalán lesz.
+6. Telefon: WhatsApp → Kapcsolt eszközök → Eszköz kapcsolása → QR beolvasása.
+7. Jelentkezz be az Owlyba a saját fiókoddal:
+   https://owlyapp.onrender.com/channels
+   Válaszd a Chrome-bővítmény módot, majd Párosítókód létrehozása → másolás.
+8. Owly Settings → AI Configuration: Ollama, Llama 3.2 3B → mentés.
+   Illeszd a párosítókódot a bővítménybe, kapcsold be a feldolgozást, és ments.
+9. Nyisd meg a kezelendő személyes beszélgetést a WhatsAppban, majd a bővítmény
+   gombjával engedélyezd. Csak az ezután érkező új szöveges üzenetek kerülnek át.
+10. Alapból választervezet készül, amit a bővítményben egyenként elküldhetsz.
+    Automatikus válaszhoz külön kapcsold be az erre szolgáló kapcsolót.
+
+FELTÉTELEK ÉS ADATOK
+- A gép, a Chrome, a WhatsApp-lap és az Ollama maradjon bekapcsolva.
+- A helyi Ollama erre a bővítményazonosítóra lett beállítva:
+  ancejbhgfoicammpiccainadkcpelank
+- Az új kód érvényteleníti a régi kapcsolatot; a kód 30 napig érvényes.
+  Az Owlyban bármikor visszavonhatod a bővítmény hozzáférését.
+- A párosítókódot a bővítmény a saját tárában tartja. Nem kerül a WhatsApp-lapra.
+- A bővítmény csak web.whatsapp.com, owlyapp.onrender.com és a helyi
+  127.0.0.1:11434 címhez kap hozzáférést. Nincs általános böngészési hozzáférés.
+- Engedélyezett új szöveges üzeneteket és elküldött válaszokat az Owly tárol.
+  Csoportok, képek, hangok és a korábbi beszélgetéstörténet nem importálódik.
+- Ez a változat a bővítményben készített válaszok küldését támogatja.
+  Az Owly beszélgetési oldalának külön üzenetküldése még nem továbbít WhatsAppra.
+- Bizonytalan küldési eredménynél ellenőrizd a WhatsAppot. A bővítmény nem
+  ismétli meg automatikusan ugyanazt a küldést.
+- A WhatsApp Web változásai miatt a nem hivatalos integráció frissítést igényelhet.
+- Az ingyenes Render-adatbázis 2026. november 21-én lejár; előtte menteni/költöztetni kell.
+
+NYÍLT FORRÁSÚ ÖSSZETEVŐ
+WPPConnect/WA-JS 4.7.1, módosítatlan böngészős csomag.
+Forrás: https://github.com/wppconnect-team/wa-js/tree/v4.7.1
+Licenc: Apache 2.0 (vendor/LICENSE-wa-js.txt).
+További közreműködők/licencek: vendor/wppconnect-wa.js.LICENSE.txt.

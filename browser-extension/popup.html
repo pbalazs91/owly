@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="hu"><head><meta charset="utf-8"><title>Owly WhatsApp</title><link rel="stylesheet" href="popup.css"></head>
+<body><header><h1>Owly · WhatsApp</h1><p>A WhatsApp és az AI ezen a gépen fut.</p></header>
+<main>
+  <div id="status" role="status">Kapcsolat ellenőrzése…</div><p id="notice" role="alert"></p>
+  <button id="open">1. WhatsApp Web megnyitása</button>
+  <p class="help">A megnyíló WhatsApp-oldal QR-kódját olvasd be a telefonodon a Kapcsolt eszközök menüben.</p>
+  <label>2. Owly párosítókód<input id="token" type="password" placeholder="A Channels oldalon létrehozott kód" autocomplete="off"></label>
+  <p class="help"><a href="https://owlyapp.onrender.com/channels" target="_blank" rel="noreferrer">Owly Channels megnyitása</a> → Chrome-bővítmény → Párosítókód létrehozása.</p>
+  <p class="help">A modellt az Owly AI Configuration oldalán választhatod ki. Ezen a gépen a llama3.2:3b modell van telepítve.</p>
+  <label class="check"><input id="enabled" type="checkbox"> Kapcsolat és üzenetfeldolgozás bekapcsolva</label>
+  <label class="check"><input id="auto" type="checkbox"> Automatikus válasz az engedélyezett beszélgetésekben</label>
+  <p class="help">Automatikus küldés nélkül a válaszokat itt ellenőrizheted és egyenként elküldheted. Csak az engedélyezés után érkező személyes szöveges üzeneteket dolgozzuk fel; csoportokat és régi üzeneteket nem importálunk.</p>
+  <div class="row"><button id="save">Beállítások mentése</button><button id="test" class="secondary">Ollama ellenőrzése</button></div>
+  <h2>3. Engedélyezett beszélgetések</h2>
+  <button id="allow" class="secondary">A WhatsAppban megnyitott beszélgetés engedélyezése</button><div id="allowed"></div>
+  <h2>Választervezetek</h2><div id="drafts"></div>
+  <button id="retry" class="secondary">Sikertelen feldolgozás újrapróbálása</button>
+  <p class="help">A gép, a Chrome és a WhatsApp-lap maradjon nyitva. Az engedélyezett új üzenetek és az elküldött válaszok az Owly Render-adatbázisába kerülnek. A párosítókódot ne oszd meg.</p>
+</main><script src="popup.js"></script></body></html>
