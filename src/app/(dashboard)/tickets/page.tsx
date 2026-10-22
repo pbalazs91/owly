@@ -140,6 +140,13 @@ export default function TicketsPage() {
   useEffect(() => {
     fetchDepartments();
   }, [fetchDepartments]);
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("ticket");
+    if (!id) return;
+    let active = true;
+    fetch(`/api/tickets/${encodeURIComponent(id)}`).then(response => response.ok ? response.json() : null).then(ticket => { if (active && ticket) setSelectedTicket(ticket); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   const handleCreateTicket = async () => {
     if (!createForm.title.trim()) return;
