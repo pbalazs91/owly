@@ -1,40 +1,48 @@
 const OWLY = 'https://owlyapp.onrender.com';
 const OLLAMA = 'http://127.0.0.1:11434';
-const DEFAULTS = { token: '', enabled: false, controlRevision: '', autoReply: false, model: 'llama3.2:3b', allowed: {}, remoteAllowed: {}, primaryTab: null, waStatus: 'disconnected', lastStatusAt: 0, error: '', drafts: [], seen: [], pending: [] };
+const DEFAULTS = { token: '', enabled: false, controlRevision: '', autoReply: false, model: 'llama3.2:3b', allowed: {}, remoteAllowed: {}, rocket: { enabled: false, accountId: '' }, rocketPending: [], primaryTab: null, waStatus: 'disconnected', lastStatusAt: 0, error: '', drafts: [], seen: [], pending: [] };
 chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 const state = async () => ({ ...DEFAULTS, ...await chrome.storage.local.get(Object.keys(DEFAULTS)) });
 const save = (value) => chrome.storage.local.set(value);
 const isAllowed = (settings, id) => !!settings.allowed[id] || !!settings.remoteAllowed[id];
+let rocketRetrying = false;
 let historyRunning = false;
 let completedHistory = '';
 async function importHistory(requestId) {
   if (historyRunning || completedHistory === requestId) return;
   historyRunning = true;
-  let imported = 0, chats = 0;
+  let imported = 0, chats = 0, skipped = 0, warning = '';
+  const reason = error => String(error?.message || 'Ismeretlen hiba').replace(/https?:\/\/\S+/g, '[kapcsolati cím]').slice(0, 220);
   try {
     const settings = await state();
     if (settings.waStatus !== 'connected') throw new Error('Előbb csatlakoztasd a WhatsApp Webet.');
     const allowed = Object.entries({ ...settings.allowed, ...settings.remoteAllowed }).filter(([id]) => /^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(id));
+    if (!allowed.length) throw new Error('Még nincs engedélyezett beszélgetés.');
     if (allowed.length > 50) throw new Error('Egyszerre legfeljebb 50 engedélyezett beszélgetés másolható.');
     for (const [chatId, name] of allowed) {
-      const result = await tabMessage('WA_HISTORY', { chatId });
-      if (!Array.isArray(result.messages)) throw new Error('Töltsd újra a frissített bővítményt és a WhatsAppot.');
+      let result;
+      try {
+        result = await tabMessage('WA_HISTORY', { chatId });
+        if (!Array.isArray(result.messages)) throw new Error('Töltsd újra a frissített bővítményt és a WhatsAppot.');
+      } catch (error) { skipped++; warning = 'WhatsApp-előzmények olvasása: ' + reason(error); continue; }
+      const targetId = /^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(result.chatId || '') ? result.chatId : chatId;
       const messages = result.messages.slice(-50);
       for (let i = 0; i < messages.length; i++) {
         const current = await state();
         if (!isAllowed(current, chatId)) break;
         // One bounded message keeps even multibyte text below the request limit.
-        const batch = await api('history', { requestId, chatId, name: String(name || chatId).slice(0, 200), messages: [{ ...messages[i], content: messages[i].content.slice(0, 4000) }] });
+        const batch = await api('history', { requestId, chatId: targetId, name: String(name || chatId).slice(0, 200), messages: [{ ...messages[i], content: messages[i].content.slice(0, 4000) }] });
         imported += batch.imported || 0;
       }
       chats++;
     }
-    await api('historyResult', { requestId, status: 'done', imported, chats });
+    if (!chats) throw new Error(warning || 'Nem olvasható egyetlen engedélyezett beszélgetés sem.');
+    await api('historyResult', { requestId, status: 'done', imported, chats, skipped, ...(warning ? { warning } : {}) });
     completedHistory = requestId;
   } catch (error) {
-    const message = 'Az előzmények másolása megszakadt. Ellenőrizd a WhatsApp kapcsolatát, és próbáld újra.';
+    const message = 'Az előzmények másolása megszakadt: ' + reason(error);
     await save({ error: message });
-    await api('historyResult', { requestId, status: 'error', imported, chats, error: message }).catch(() => {});
+    await api('historyResult', { requestId, status: 'error', imported, chats, skipped, error: message.slice(0, 300) }).catch(() => {});
   } finally { historyRunning = false; }
 }
 async function api(action, data = {}) {
@@ -64,15 +72,25 @@ async function heartbeat() {
     } catch {}
   }
   const status = Date.now() - settings.lastStatusAt < 65000 ? settings.waStatus : 'disconnected';
-  const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2, version: '0.3.0' });
+  const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2, version: '0.4.0' });
+  if (result.rocket && typeof result.rocket.enabled === 'boolean') {
+    await save({ rocket: { enabled: result.rocket.enabled, accountId: String(result.rocket.accountId || '') } });
+  }
   if (result.alwaysAllowed && typeof result.alwaysAllowed === 'object' && !Array.isArray(result.alwaysAllowed)) {
     await save({ remoteAllowed: Object.fromEntries(Object.entries(result.alwaysAllowed).filter(([id, name]) => /^\d+@c\.us$/.test(id) && typeof name === 'string').slice(0, 50)) });
   }
   if (typeof result.desiredEnabled === 'boolean' && typeof result.controlRevision === 'string' && result.controlRevision !== settings.controlRevision) {
     await save({ enabled: result.desiredEnabled, controlRevision: result.controlRevision });
-    await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2, version: '0.3.0' });
+    await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2, version: '0.4.0' });
   }
   if (typeof result.historyRequest === 'string') void importHistory(result.historyRequest);
+  if (result.rocket?.enabled && !rocketRetrying) {
+    rocketRetrying = true;
+    queue = queue.then(async () => {
+      try { await rocketApi('', { action: 'drain' }); for (const item of (await state()).rocketPending) await rocketIncoming(item); }
+      finally { rocketRetrying = false; }
+    }).catch(error => save({ error: error.message || 'RocketSender újrapróbálkozási hiba.' }));
+  }
 }
 async function tabMessage(type, data = {}) {
   const settings = await state();
@@ -96,6 +114,7 @@ async function sendDraft(id) {
 }
 async function incoming(message) {
   const settings = await state();
+  if (settings.rocket.enabled) { await rocketIncoming(message); return; }
   if (!settings.enabled || !settings.token || !message || !isAllowed(settings, message.chatId) || settings.seen.includes(message.id)) return;
   if (typeof message.id !== 'string' || message.id.length > 250 || typeof message.content !== 'string' || message.content.length > 6000) return;
   await save({ pending: [...settings.pending.filter((item) => item.id !== message.id), message].slice(-20) });
@@ -118,6 +137,36 @@ async function incoming(message) {
   await save({ drafts: [...current.drafts, draft].slice(-20), error: '' });
   await processed();
   if (current.autoReply && current.enabled && isAllowed(current, draft.chatId)) await sendDraft(draft.id);
+}
+async function rocketApi(path, body) {
+  const settings = await state();
+  const response = await fetch(OWLY + '/api/integrations/rocketsender' + path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-API-Key': settings.token },
+    body: JSON.stringify(body), signal: AbortSignal.timeout(45000),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'RocketSender importkapcsolati hiba.');
+  return data;
+}
+async function rocketIncoming(message) {
+  const settings = await state();
+  if (!settings.token || !settings.rocket.enabled || !settings.enabled || !message || message.fromMe) return;
+  if (!/^\d+@c\.us$/.test(message.chatId) || !/^\d+@c\.us$/.test(message.accountId) || typeof message.id !== 'string' || message.id.length > 250 || typeof message.content !== 'string' || message.content.length > 6000 || !Number.isFinite(message.timestamp)) return;
+  const accountId = '+' + message.accountId.split('@')[0];
+  if (accountId !== settings.rocket.accountId) return;
+  const phone = '+' + message.chatId.split('@')[0];
+  const occurredAt = new Date(message.timestamp).toISOString();
+  await save({ rocketPending: [...settings.rocketPending.filter(item => item.id !== message.id), message] });
+  // Unknown senders' message bodies are not uploaded. The eligibility check
+  // contains only account/phone/time, and does not create an Owly profile.
+  const eligible = await rocketApi('/check', { accountId, phone, occurredAt });
+  if (eligible.eligible) await rocketApi('/inbound', {
+    eventType: 'reply', eventId: 'wa:' + message.id, externalMessageId: message.id,
+    conversationId: message.chatId, accountId, phone, occurredAt,
+    name: String(message.name || '').slice(0, 200), content: message.content,
+  });
+  const latest = await state();
+  await save({ rocketPending: latest.rocketPending.filter(item => item.id !== message.id) });
 }
 let queue = Promise.resolve();
 async function handle(message, sender) {
