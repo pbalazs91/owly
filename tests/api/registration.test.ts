@@ -7,16 +7,18 @@ vi.mock("@/lib/auth", async (importOriginal) => ({
   isSetupComplete: vi.fn(),
 }));
 
-describe("single-user registration", () => {
+describe("bootstrap admin plus one registered account", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     const { isSetupComplete } = await import("@/lib/auth");
     vi.mocked(isSetupComplete).mockResolvedValue(false);
+    vi.mocked(prisma.admin.count).mockReset();
+    vi.mocked(prisma.admin.count).mockResolvedValue(1);
     vi.mocked(prisma.admin.create).mockReset();
     vi.mocked(prisma.admin.create).mockResolvedValue({
       id: "owner",
-      username: "balazs",
-      name: "balazs",
+      username: "sajatfiok",
+      name: "sajatfiok",
       role: "admin",
     } as never);
     vi.mocked(prisma.settings.upsert).mockResolvedValue({} as never);
@@ -30,30 +32,38 @@ describe("single-user registration", () => {
     );
   }
 
-  it("creates the only account with username and password alone", async () => {
-    const response = await register({ username: "balazs", password: "secure-password" });
+  it("creates a second account with username and password alone", async () => {
+    const response = await register({ username: "sajatfiok", password: "secure-password" });
     const data = await parseJsonResponse(response);
     expect(response.status).toBe(200);
     expect(data.user).not.toHaveProperty("password");
     expect(response.headers.get("set-cookie")).toContain("HttpOnly");
     expect(prisma.admin.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ username: "balazs", name: "balazs", role: "admin" }),
+      data: expect.objectContaining({ username: "sajatfiok", name: "sajatfiok", role: "admin" }),
     });
   });
 
-  it("rejects a second registration before creating an account", async () => {
-    const { isSetupComplete } = await import("@/lib/auth");
-    vi.mocked(isSetupComplete).mockResolvedValue(true);
+  it("rejects a third account before creating an account", async () => {
+    vi.mocked(prisma.admin.count).mockResolvedValue(2);
     const response = await register({ username: "other", password: "secure-password" });
     expect(response.status).toBe(409);
     expect(prisma.admin.create).not.toHaveBeenCalled();
   });
 
   it("handles a simultaneous signup losing the database singleton race", async () => {
+    vi.mocked(prisma.admin.count).mockResolvedValueOnce(1).mockResolvedValueOnce(2);
     vi.mocked(prisma.admin.create).mockRejectedValueOnce({ code: "P2002" });
     const response = await register({ username: "other", password: "secure-password" });
     expect(response.status).toBe(409);
+    expect((await parseJsonResponse(response)).code).toBe("ACCOUNT_LIMIT");
     expect(prisma.settings.upsert).not.toHaveBeenCalled();
+  });
+
+  it("keeps the bootstrap username reserved without closing the available slot", async () => {
+    const response = await register({ username: "balazs", password: "secure-password" });
+    expect(response.status).toBe(409);
+    expect((await parseJsonResponse(response)).code).toBe("USERNAME_TAKEN");
+    expect(prisma.admin.create).not.toHaveBeenCalled();
   });
 
   it.each([
