@@ -386,15 +386,16 @@ export default function AdminPage() {
               <div>
                 <h3 className="font-semibold text-owly-text">Admin Users</h3>
                 <p className="text-xs text-owly-text-light mt-0.5">
-                  {users.length} user{users.length !== 1 ? "s" : ""} total
+                  {users.length} / 1 account
                 </p>
               </div>
               <button
-                onClick={() => openUserModal()}
+                disabled
+                title="This installation allows one account only"
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-owly-primary hover:bg-owly-primary-dark rounded-lg transition-colors"
               >
                 <Plus className="h-3.5 w-3.5" />
-                Add User
+                Account limit: 1
               </button>
             </div>
 
