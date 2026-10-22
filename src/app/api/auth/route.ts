@@ -16,10 +16,13 @@ export async function POST(request: NextRequest) {
   const { action, username, password, name } = body;
 
   if (action === "setup" || action === "register") {
-    const setupDone = await isSetupComplete();
-    if (setupDone) {
+    const setupDone = action === "setup" && (await isSetupComplete());
+    if (setupDone || (await prisma.admin.count()) >= 2) {
       return NextResponse.json(
-        { error: "A regisztráció lezárult: legfeljebb 1 felhasználó engedélyezett." },
+        {
+          error: "A regisztráció lezárult: legfeljebb 2 felhasználó engedélyezett.",
+          code: "ACCOUNT_LIMIT",
+        },
         { status: action === "setup" ? 400 : 409 }
       );
     }
@@ -40,6 +43,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (username.trim() === "balazs") {
+      return NextResponse.json(
+        {
+          error: "Ez a felhasználónév az ideiglenes adminfióké. Válassz másikat.",
+          code: "USERNAME_TAKEN",
+        },
+        { status: 409 }
+      );
+    }
     const hashed = await hashPassword(password);
     let admin;
     try {
@@ -60,7 +72,9 @@ export async function POST(request: NextRequest) {
         error.code === "P2002"
       ) {
         return NextResponse.json(
-          { error: "A regisztráció lezárult: legfeljebb 1 felhasználó engedélyezett." },
+          (await prisma.admin.count()) >= 2
+            ? { error: "A két felhasználói hely már foglalt.", code: "ACCOUNT_LIMIT" }
+            : { error: "Ez a felhasználónév már foglalt.", code: "USERNAME_TAKEN" },
           { status: 409 }
         );
       }
@@ -133,18 +147,20 @@ export async function POST(request: NextRequest) {
 // GET /api/auth - Check auth status
 export async function GET() {
   const setupDone = await isSetupComplete();
+  const registrationOpen = (await prisma.admin.count()) < 2;
   if (!setupDone) {
-    return NextResponse.json({ authenticated: false, setupRequired: true });
+    return NextResponse.json({ authenticated: false, setupRequired: true, registrationOpen });
   }
 
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ authenticated: false, setupRequired: false });
+    return NextResponse.json({ authenticated: false, setupRequired: false, registrationOpen });
   }
 
   return NextResponse.json({
     authenticated: true,
     setupRequired: false,
+    registrationOpen,
     user,
   });
 }
