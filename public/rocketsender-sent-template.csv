@@ -1,0 +1,2 @@
+phone,status,sentAt,sourceMessageId,content
++12025550123,sent,2026-10-22T12:00:00Z,example-sent-id,"Példa a ténylegesen elküldött üzenetre"
