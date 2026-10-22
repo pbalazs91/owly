@@ -26,6 +26,11 @@ beforeEach(() => {
 });
 
 describe("Restricted WhatsApp browser connection", () => {
+  it("stores explicitly approved phone numbers in private channel settings", async () => {
+    const response = await POST(createRequest("/api/channels/whatsapp/browser", { method: "POST", body: { action: "allowPhone", phone: "+1 202 555 0123" } }));
+    expect(response.status).toBe(200);
+    expect(db.channel.update.mock.calls[0][0].data.config.browserAlwaysAllowed).toEqual({ '12025550123@c.us': '+12025550123' });
+  });
   it("reports WhatsApp connectivity separately from paused processing", async () => {
     db.channel.findUnique.mockResolvedValue({ config: { browserTokenId: "test-pair", browserStatus: "connected", browserLastSeen: new Date().toISOString(), browserEnabled: false, browserProtocol: 2 } });
     const data = await parseJsonResponse(await GET(createRequest("/api/channels/whatsapp/browser")));
