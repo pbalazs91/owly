@@ -19,11 +19,11 @@
   function subscribe() {
     if (!ready() || subscribed) return;
     subscribed = true;
-    window.WPP.on('chat.new_message', (msg) => {
+    window.WPP.on('chat.new_message', async (msg) => {
       const fromMe = !!(msg.id?.fromMe || msg.fromMe);
       const target = normalize(fromMe ? msg.to : msg.from);
       const selfChat = ownIds().has(target);
-      const chatId = selfChat ? ownChat() : target;
+      let chatId = selfChat ? ownChat() : target;
       const id = idOf(msg.id);
       const timestamp = Number(msg.t || 0);
       if ((fromMe && !selfChat) || msg.type !== 'chat' || !/^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(chatId)) return;
@@ -32,6 +32,9 @@
       for (const [key, at] of sentByBridge) if (Date.now() - at > 120000) sentByBridge.delete(key);
       if (selfChat && (sentByBridge.has(id) || pendingSends.some((item) => item.chatId === chatId && item.content === msg.body))) {
         sentByBridge.set(id, Date.now()); return;
+      }
+      if (chatId.endsWith('@lid') && window.WPP.contact?.getPnLidEntry) {
+        try { const entry = await window.WPP.contact.getPnLidEntry(chatId); chatId = normalize(entry.phoneNumber) || chatId; } catch {}
       }
       post('incoming', { message: { id, chatId, content: msg.body.slice(0, 6000), name: String(msg.notifyName || 'WhatsApp ügyfél').slice(0, 200) } });
     });

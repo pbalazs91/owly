@@ -1,9 +1,10 @@
 const OWLY = 'https://owlyapp.onrender.com';
 const OLLAMA = 'http://127.0.0.1:11434';
-const DEFAULTS = { token: '', enabled: false, controlRevision: '', autoReply: false, model: 'llama3.2:3b', allowed: {}, primaryTab: null, waStatus: 'disconnected', lastStatusAt: 0, error: '', drafts: [], seen: [], pending: [] };
+const DEFAULTS = { token: '', enabled: false, controlRevision: '', autoReply: false, model: 'llama3.2:3b', allowed: {}, remoteAllowed: {}, primaryTab: null, waStatus: 'disconnected', lastStatusAt: 0, error: '', drafts: [], seen: [], pending: [] };
 chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 const state = async () => ({ ...DEFAULTS, ...await chrome.storage.local.get(Object.keys(DEFAULTS)) });
 const save = (value) => chrome.storage.local.set(value);
+const isAllowed = (settings, id) => !!settings.allowed[id] || !!settings.remoteAllowed[id];
 async function api(action, data = {}) {
   const settings = await state();
   if (!settings.token) throw new Error('Másold be az Owly párosítókódját.');
@@ -16,10 +17,25 @@ async function api(action, data = {}) {
   return result;
 }
 async function heartbeat() {
-  const settings = await state();
+  let settings = await state();
   if (!settings.token) return;
+  // Re-discover a refreshed/reopened WhatsApp tab after extension or browser reload.
+  let candidates = Number.isInteger(settings.primaryTab) ? [{ id: settings.primaryTab }] : [];
+  try { candidates = [...candidates, ...(await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' })).filter(tab => tab.id !== settings.primaryTab)]; } catch {}
+  for (const tab of candidates) {
+    try {
+      const ping = await chrome.tabs.sendMessage(tab.id, { type: 'WA_PING' });
+      if (ping?.contentReady && ['loading', 'qr_ready', 'connected', 'disconnected'].includes(ping.status) && Date.now() - ping.lastStatusAt < 10000) {
+        const update = { primaryTab: tab.id, waStatus: ping.status, lastStatusAt: ping.lastStatusAt };
+        await save(update); settings = { ...settings, ...update }; break;
+      }
+    } catch {}
+  }
   const status = Date.now() - settings.lastStatusAt < 65000 ? settings.waStatus : 'disconnected';
   const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2 });
+  if (result.alwaysAllowed && typeof result.alwaysAllowed === 'object' && !Array.isArray(result.alwaysAllowed)) {
+    await save({ remoteAllowed: Object.fromEntries(Object.entries(result.alwaysAllowed).filter(([id, name]) => /^\d+@c\.us$/.test(id) && typeof name === 'string').slice(0, 50)) });
+  }
   if (typeof result.desiredEnabled === 'boolean' && typeof result.controlRevision === 'string' && result.controlRevision !== settings.controlRevision) {
     await save({ enabled: result.desiredEnabled, controlRevision: result.controlRevision });
     await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2 });
@@ -38,7 +54,7 @@ async function tabMessage(type, data = {}) {
 async function sendDraft(id) {
   const settings = await state();
   const draft = settings.drafts.find((item) => item.id === id);
-  if (!draft || !settings.enabled || !settings.allowed[draft.chatId]) throw new Error('Ez a beszélgetés nincs engedélyezve.');
+  if (!draft || !settings.enabled || !isAllowed(settings, draft.chatId)) throw new Error('Ez a beszélgetés nincs engedélyezve.');
   // Mark before sending: an uncertain network result must never automatically
   // resend the same reply. The user can check WhatsApp if a send times out.
   await save({ drafts: settings.drafts.filter((item) => item.id !== id) });
@@ -47,7 +63,7 @@ async function sendDraft(id) {
 }
 async function incoming(message) {
   const settings = await state();
-  if (!settings.enabled || !settings.token || !message || !settings.allowed[message.chatId] || settings.seen.includes(message.id)) return;
+  if (!settings.enabled || !settings.token || !message || !isAllowed(settings, message.chatId) || settings.seen.includes(message.id)) return;
   if (typeof message.id !== 'string' || message.id.length > 250 || typeof message.content !== 'string' || message.content.length > 6000) return;
   await save({ pending: [...settings.pending.filter((item) => item.id !== message.id), message].slice(-20) });
   const result = await api('incoming', message);
@@ -68,7 +84,7 @@ async function incoming(message) {
   const current = await state();
   await save({ drafts: [...current.drafts, draft].slice(-20), error: '' });
   await processed();
-  if (current.autoReply && current.enabled && current.allowed[draft.chatId]) await sendDraft(draft.id);
+  if (current.autoReply && current.enabled && isAllowed(current, draft.chatId)) await sendDraft(draft.id);
 }
 let queue = Promise.resolve();
 async function handle(message, sender) {
@@ -76,7 +92,11 @@ async function handle(message, sender) {
   const isPopup = sender.url === chrome.runtime.getURL('popup.html') && !sender.tab;
   if (!isPopup) {
     const settings = await state();
-    if (!sender.tab || sender.tab.id !== settings.primaryTab || !sender.tab.url?.startsWith('https://web.whatsapp.com/')) return { ignored: true };
+    if (!sender.tab || !sender.tab.url?.startsWith('https://web.whatsapp.com/')) return { ignored: true };
+    if (sender.tab.id !== settings.primaryTab) {
+      if (message.type !== 'WA_STATUS' || (settings.primaryTab && Date.now() - settings.lastStatusAt < 65000)) return { ignored: true };
+      await save({ primaryTab: sender.tab.id });
+    }
     if (message.type === 'WA_STATUS') {
       if (!['loading', 'qr_ready', 'connected', 'disconnected'].includes(message.status)) return;
       await save({ waStatus: message.status, lastStatusAt: Date.now() }); await heartbeat(); return { ok: true };
@@ -90,8 +110,11 @@ async function handle(message, sender) {
   if (message.type === 'GET_STATE') { const settings = await state(); return { ...settings, token: settings.token ? 'saved' : '' }; }
   if (message.type === 'OPEN_WA') {
     const tabs = await chrome.tabs.query({ url: 'https://web.whatsapp.com/*' });
-    const tab = tabs.length ? await chrome.tabs.update(tabs[0].id, { active: true }) : await chrome.tabs.create({ url: 'https://web.whatsapp.com/', active: true });
+    const settings = await state();
+    const selected = tabs.find(tab => tab.id === settings.primaryTab) || tabs.find(tab => tab.active) || tabs[0];
+    const tab = selected ? await chrome.tabs.update(selected.id, { active: true }) : await chrome.tabs.create({ url: 'https://web.whatsapp.com/', active: true });
     await save({ primaryTab: tab.id, waStatus: 'loading', error: '' });
+    if (selected) await chrome.tabs.reload(tab.id);
     // Selecting a tab does not bring its containing Chrome window to the front.
     if (Number.isInteger(tab.windowId)) await chrome.windows.update(tab.windowId, { focused: true });
     return { ok: true };
@@ -113,6 +136,9 @@ async function handle(message, sender) {
     if (!/^\d+@(c\.us|lid)$/.test(chat.chatId)) throw new Error('A saját beszélgetés nem érhető el.');
     const settings = await state();
     await save({ allowed: { ...settings.allowed, [chat.chatId]: chat.name } });
+    const tab = await chrome.tabs.get(settings.primaryTab);
+    await chrome.tabs.update(tab.id, { active: true });
+    if (Number.isInteger(tab.windowId)) await chrome.windows.update(tab.windowId, { focused: true });
     return chat;
   }
   if (message.type === 'SELF_TEST') {

@@ -16,14 +16,17 @@ async function render(initial = false) {
     $('notice').textContent = state.error;
   }
   $('allowed').replaceChildren();
-  for (const [chatId, name] of Object.entries(state.allowed)) {
+  const allowed = { ...state.allowed, ...state.remoteAllowed };
+  for (const [chatId, name] of Object.entries(allowed)) {
     const card = document.createElement('div'); card.className = 'card';
     const label = document.createElement('strong'); label.textContent = name;
     const remove = document.createElement('button'); remove.className = 'secondary'; remove.textContent = 'Engedély visszavonása';
     remove.onclick = () => perform(remove, async () => { await request('REMOVE_CHAT', { chatId }); await render(); });
-    card.append(label, document.createElement('br'), remove); $('allowed').append(card);
+    if (state.remoteAllowed?.[chatId]) { const note = document.createElement('p'); note.textContent = 'Mindig engedélyezve az Owlyban'; card.append(label, note); }
+    else card.append(label, document.createElement('br'), remove);
+    $('allowed').append(card);
   }
-  if (!Object.keys(state.allowed).length) $('allowed').textContent = 'Még egy beszélgetés sincs engedélyezve.';
+  if (!Object.keys(allowed).length) $('allowed').textContent = 'Még egy beszélgetés sincs engedélyezve.';
   $('drafts').replaceChildren();
   for (const draft of state.drafts) {
     const card = document.createElement('div'); card.className = 'card';
