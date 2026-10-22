@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { BrowserWhatsApp } from "@/components/channels/browser-whatsapp";
 import {
   MessageCircle,
   Mail,
@@ -33,7 +34,7 @@ interface ChannelData {
   status: string;
 }
 
-type WhatsAppMode = "web" | "api";
+type WhatsAppMode = "web" | "api" | "browser";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -155,7 +156,7 @@ function WhatsAppCard({
   const cfg = channel.config as Record<string, string>;
   const [isActive, setIsActive] = useState(channel.isActive);
   const [mode, setMode] = useState<WhatsAppMode>(
-    (cfg.mode as WhatsAppMode) || "web"
+    cfg.mode === "api" ? "api" : "browser"
   );
   const [apiKey, setApiKey] = useState(cfg.apiKey || "");
   const [phoneNumber, setPhoneNumber] = useState(cfg.phoneNumber || "");
@@ -232,8 +233,8 @@ function WhatsAppCard({
             </div>
           </div>
           <div className="flex items-center gap-3">
-            <StatusBadge status={channel.status} />
-            <Toggle enabled={isActive} onChange={setIsActive} />
+            {mode !== "browser" && <StatusBadge status={channel.status} />}
+            {mode !== "browser" && <Toggle enabled={isActive} onChange={setIsActive} />}
           </div>
         </div>
       </div>
@@ -246,6 +247,9 @@ function WhatsAppCard({
             Connection Method
           </label>
           <div className="flex gap-2">
+            <button type="button" onClick={() => setMode("browser")} className={cn("flex-1 px-3 py-2 text-sm font-medium rounded-lg border", mode === "browser" ? "border-green-300 bg-green-50 text-green-700" : "border-owly-border text-owly-text-light")}>
+              Chrome-bővítmény
+            </button>
             <button
               type="button"
               onClick={() => setMode("web")}
@@ -257,7 +261,7 @@ function WhatsAppCard({
               )}
             >
               <QrCode className="h-4 w-4" />
-              WhatsApp Web
+              Szerveres Web
             </button>
             <button
               type="button"
@@ -275,7 +279,7 @@ function WhatsAppCard({
           </div>
         </div>
 
-        {mode === "web" ? (
+        {mode === "browser" ? <BrowserWhatsApp /> : mode === "web" ? (
           <div>
             {isConnected ? (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4">
@@ -370,14 +374,14 @@ function WhatsAppCard({
       </div>
 
       {/* Footer */}
-      <div className="px-5 py-3 border-t border-owly-border bg-owly-bg/50">
+      {mode !== "browser" && <div className="px-5 py-3 border-t border-owly-border bg-owly-bg/50">
         <button
           type="button"
           disabled={saving}
           onClick={() =>
             onSave(
               "whatsapp",
-              { mode, apiKey, phoneNumber },
+              { ...cfg, mode, apiKey, phoneNumber },
               isActive
             )
           }
@@ -390,7 +394,7 @@ function WhatsAppCard({
           )}
           Save
         </button>
-      </div>
+      </div>}
     </div>
   );
 }
