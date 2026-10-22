@@ -18,7 +18,7 @@ export default function LoginPage() {
         const res = await fetch("/api/auth");
         const data = await res.json();
         if (data.setupRequired) {
-          router.replace("/setup");
+          router.replace("/register");
           return;
         }
         if (data.authenticated) {
