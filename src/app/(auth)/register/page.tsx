@@ -20,11 +20,7 @@ export default function RegisterPage() {
         if (!response.ok) throw new Error();
         const data = await response.json();
         if (!active) return;
-        if (data.authenticated) {
-          router.replace("/channels");
-          return;
-        }
-        setState(data.setupRequired ? "open" : "closed");
+        setState(data.registrationOpen ? "open" : "closed");
       })
       .catch(() => {
         if (active) setState("error");
@@ -46,7 +42,7 @@ export default function RegisterPage() {
       });
       const data = await response.json();
       if (!response.ok) {
-        if (response.status === 409) setState("closed");
+        if (data.code === "ACCOUNT_LIMIT") setState("closed");
         setError(
           typeof data.error === "string" ? data.error : "A regisztráció nem sikerült. Próbáld újra."
         );
@@ -72,7 +68,7 @@ export default function RegisterPage() {
         </h1>
         <p className="text-owly-text-light text-sm mt-2">
           {state === "closed"
-            ? "Az egyetlen felhasználói fiók már létrejött."
+            ? "A két felhasználói fiók már létrejött."
             : "Csak felhasználónév és jelszó szükséges."}
         </p>
       </div>
@@ -143,7 +139,7 @@ export default function RegisterPage() {
             {saving ? "Fiók létrehozása…" : "Regisztráció"}
           </button>
           <p className="text-center text-xs text-owly-text-light">
-            Legfeljebb 1 felhasználói fiók hozható létre.
+            Az ideiglenes admin mellé még 1 saját fiók hozható létre.
           </p>
         </form>
       )}
