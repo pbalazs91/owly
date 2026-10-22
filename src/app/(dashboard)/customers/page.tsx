@@ -658,7 +658,7 @@ export default function CustomersPage() {
                     </span>
                   )}
                   <span className="text-xs text-owly-text-light">
-                    {selectedCustomer._count.notes} notes
+                    {selectedCustomer._count?.notes ?? selectedCustomer.notes?.length ?? 0} notes
                   </span>
                 </div>
               </div>
