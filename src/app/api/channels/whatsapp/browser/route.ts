@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
       const job = config.browserHistory as { id?: string; status?: string } | undefined;
       if (!job?.id || body.requestId !== job.id) return json({ error: "Nincs ilyen előzményimport." }, 409);
       if (body.action === "historyResult") {
-        const result = z.object({ status: z.enum(["done", "error"]), imported: z.number().int().min(0).max(2500), chats: z.number().int().min(0).max(50), error: z.string().max(300).optional() }).safeParse(body);
+        const result = z.object({ status: z.enum(["done", "error"]), imported: z.number().int().min(0).max(2500), chats: z.number().int().min(0).max(50), skipped: z.number().int().min(0).max(50).default(0), warning: z.string().max(300).optional(), error: z.string().max(300).optional() }).safeParse(body);
         if (!result.success) return json({ error: "Hibás importállapot." }, 400);
         await prisma.channel.update({ where: { type: "whatsapp" }, data: { config: { ...config, browserHistory: { id: job.id, ...result.data } } } });
         return json({ ok: true });
