@@ -65,9 +65,15 @@
         post('result', { requestId, result: { chatId: id, name: String(chat.formattedTitle || chat.name || id).slice(0, 200) } });
       } else if (action === 'history') {
         if (!/^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(chatId)) throw new Error('Csak személyes beszélgetés másolható.');
+        if (typeof window.WPP.chat.getMessages !== 'function') throw new Error('A WhatsApp-előzményolvasó nem töltődött be. Frissítsd a WhatsApp lapját.');
         const rows = await window.WPP.chat.getMessages(chatId, { count: 50 });
+        if (!Array.isArray(rows)) throw new Error('A WhatsApp eltérő formátumban adta vissza az előzményeket.');
         const messages = rows.filter(msg => msg.type === 'chat' && typeof msg.body === 'string' && msg.body.trim() && idOf(msg.id) && Number(msg.t) > 0).map(msg => ({ id: idOf(msg.id).slice(0, 250), content: msg.body.slice(0, 6000), fromMe: !!(msg.id?.fromMe || msg.fromMe), timestamp: Math.round(Number(msg.t) * 1000) })).sort((a, b) => a.timestamp - b.timestamp);
-        post('result', { requestId, result: { messages } });
+        let canonicalId = normalize(chatId);
+        if (canonicalId.endsWith('@lid') && window.WPP.contact?.getPnLidEntry) {
+          try { const entry = await window.WPP.contact.getPnLidEntry(canonicalId); canonicalId = normalize(entry.phoneNumber) || canonicalId; } catch {}
+        }
+        post('result', { requestId, result: { messages, chatId: canonicalId } });
       } else if (action === 'send') {
         if (!/^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(chatId) || typeof content !== 'string' || !content.trim() || content.length > 6000) throw new Error('Hibás válasz.');
         pendingSends.push({ chatId: normalize(chatId), content, at: Date.now() });

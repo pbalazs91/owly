@@ -11,31 +11,38 @@ let completedHistory = '';
 async function importHistory(requestId) {
   if (historyRunning || completedHistory === requestId) return;
   historyRunning = true;
-  let imported = 0, chats = 0;
+  let imported = 0, chats = 0, skipped = 0, warning = '';
+  const reason = error => String(error?.message || 'Ismeretlen hiba').replace(/https?:\/\/\S+/g, '[kapcsolati cím]').slice(0, 220);
   try {
     const settings = await state();
     if (settings.waStatus !== 'connected') throw new Error('Előbb csatlakoztasd a WhatsApp Webet.');
     const allowed = Object.entries({ ...settings.allowed, ...settings.remoteAllowed }).filter(([id]) => /^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(id));
+    if (!allowed.length) throw new Error('Még nincs engedélyezett beszélgetés.');
     if (allowed.length > 50) throw new Error('Egyszerre legfeljebb 50 engedélyezett beszélgetés másolható.');
     for (const [chatId, name] of allowed) {
-      const result = await tabMessage('WA_HISTORY', { chatId });
-      if (!Array.isArray(result.messages)) throw new Error('Töltsd újra a frissített bővítményt és a WhatsAppot.');
+      let result;
+      try {
+        result = await tabMessage('WA_HISTORY', { chatId });
+        if (!Array.isArray(result.messages)) throw new Error('Töltsd újra a frissített bővítményt és a WhatsAppot.');
+      } catch (error) { skipped++; warning = 'WhatsApp-előzmények olvasása: ' + reason(error); continue; }
+      const targetId = /^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(result.chatId || '') ? result.chatId : chatId;
       const messages = result.messages.slice(-50);
       for (let i = 0; i < messages.length; i++) {
         const current = await state();
         if (!isAllowed(current, chatId)) break;
         // One bounded message keeps even multibyte text below the request limit.
-        const batch = await api('history', { requestId, chatId, name: String(name || chatId).slice(0, 200), messages: [{ ...messages[i], content: messages[i].content.slice(0, 4000) }] });
+        const batch = await api('history', { requestId, chatId: targetId, name: String(name || chatId).slice(0, 200), messages: [{ ...messages[i], content: messages[i].content.slice(0, 4000) }] });
         imported += batch.imported || 0;
       }
       chats++;
     }
-    await api('historyResult', { requestId, status: 'done', imported, chats });
+    if (!chats) throw new Error(warning || 'Nem olvasható egyetlen engedélyezett beszélgetés sem.');
+    await api('historyResult', { requestId, status: 'done', imported, chats, skipped, ...(warning ? { warning } : {}) });
     completedHistory = requestId;
   } catch (error) {
-    const message = 'Az előzmények másolása megszakadt. Ellenőrizd a WhatsApp kapcsolatát, és próbáld újra.';
+    const message = 'Az előzmények másolása megszakadt: ' + reason(error);
     await save({ error: message });
-    await api('historyResult', { requestId, status: 'error', imported, chats, error: message }).catch(() => {});
+    await api('historyResult', { requestId, status: 'error', imported, chats, skipped, error: message.slice(0, 300) }).catch(() => {});
   } finally { historyRunning = false; }
 }
 async function api(action, data = {}) {
