@@ -15,11 +15,10 @@ export async function POST(request: Request) {
   const { action } = body;
 
   if (action === "connect") {
-    await initWhatsApp();
-    // Wait a moment for QR to generate
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-    const status = getWhatsAppStatus();
-    return NextResponse.json(status);
+    // The long-lived Render process initializes in the background. Let the UI
+    // poll immediately, including QR updates and a recoverable startup error.
+    void initWhatsApp().catch(() => {});
+    return NextResponse.json(getWhatsAppStatus(), { status: 202 });
   }
 
   if (action === "disconnect") {
