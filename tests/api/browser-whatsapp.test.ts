@@ -26,6 +26,23 @@ beforeEach(() => {
 });
 
 describe("Restricted WhatsApp browser connection", () => {
+  it("reports WhatsApp connectivity separately from paused processing", async () => {
+    db.channel.findUnique.mockResolvedValue({ config: { browserTokenId: "test-pair", browserStatus: "connected", browserLastSeen: new Date().toISOString(), browserEnabled: false, browserProtocol: 2 } });
+    const data = await parseJsonResponse(await GET(createRequest("/api/channels/whatsapp/browser")));
+    expect(data.status).toBe("connected"); expect(data.enabled).toBe(false); expect(data.supportsControl).toBe(true);
+  });
+  it("keeps a remote toggle pending until the extension acknowledges it", async () => {
+    db.channel.findUnique.mockResolvedValue({ config: { browserTokenId: "test-pair", browserControlRevision: "revision1", browserDesiredEnabled: true } });
+    const response = await POST(request({ action: "heartbeat", status: "connected", enabled: false, protocol: 2, controlRevision: "" }));
+    expect(await parseJsonResponse(response)).toMatchObject({ desiredEnabled: true, controlRevision: "revision1" });
+    const data = db.channel.update.mock.calls[0][0].data;
+    expect(data.isActive).toBe(false); expect(data.config.browserDesiredEnabled).toBe(true);
+  });
+  it("blocks incoming processing immediately when paused in Owly", async () => {
+    db.channel.findUnique.mockResolvedValue({ config: { browserTokenId: "test-pair", browserDesiredEnabled: false } });
+    expect((await POST(request({ action: "incoming", chatId: "123@c.us", id: "test", content: "Szia" }))).status).toBe(409);
+    expect(db.message.create).not.toHaveBeenCalled();
+  });
   it("issues a restricted token that cannot become an Owly login token", async () => {
     const response = await POST(request({ action: "pair" }));
     const data = await parseJsonResponse(response);
