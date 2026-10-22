@@ -20,13 +20,24 @@ function extension(initial = {}) {
   };
   const context = vm.createContext({ chrome, fetch, AbortSignal, Date, console });
   vm.runInContext(readFileSync('browser-extension/background.js', 'utf8'), context);
-  return { stored, send, fetch, chrome, handle: (message: object, sender: object) => context.handle(message, sender), incoming: (message: object) => context.incoming(message), heartbeat: () => context.heartbeat() };
+  return { stored, send, fetch, chrome, handle: (message: object, sender: object) => context.handle(message, sender), incoming: (message: object) => context.incoming(message), heartbeat: () => context.heartbeat(), importHistory: (id: string) => context.importHistory(id) };
 }
 const popup = { id: "extension-id", url: "chrome-extension://extension-id/popup.html" };
 const wa = { id: "extension-id", tab: { id: 1, url: "https://web.whatsapp.com/" } };
 const incoming = { id: "one", chatId: "123@c.us", content: "Kérdés", name: "Ügyfél" };
 
 describe("Chrome bridge permissions and delivery", () => {
+  it("imports only approved history without invoking AI or sending WhatsApp messages", async () => {
+    const app = extension({ token: "private-token", primaryTab: 1, waStatus: "connected", allowed: { '123@c.us': 'Approved' }, remoteAllowed: { '456@c.us': 'Always approved' } });
+    app.send.mockResolvedValue({ messages: [{ id: 'older', content: 'Old text', fromMe: false, timestamp: 1700000000000 }] });
+    app.fetch.mockResolvedValue({ ok: true, json: async () => ({ imported: 1 }) });
+    await app.importHistory('job');
+    expect(app.send.mock.calls.map(([, message]) => message)).toEqual([
+      { type: 'WA_HISTORY', chatId: '123@c.us' }, { type: 'WA_HISTORY', chatId: '456@c.us' },
+    ]);
+    expect(app.fetch.mock.calls.every(([url]) => !url.includes('/api/chat'))).toBe(true);
+    expect(JSON.parse(app.fetch.mock.calls.at(-1)![1].body)).toMatchObject({ action: 'historyResult', status: 'done', imported: 2, chats: 2 });
+  });
   it("automatically allows centrally configured numbers without per-chat approval", async () => {
     const app = extension({ token: "private-token", enabled: true, remoteAllowed: { '123@c.us': '+123' } });
     await app.incoming(incoming);

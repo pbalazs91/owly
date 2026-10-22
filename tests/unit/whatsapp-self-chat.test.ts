@@ -19,6 +19,20 @@ function bridge() {
   return { post, message, receive: (msg: any) => incoming(msg), command, w };
 }
 describe("WhatsApp self-chat testing", () => {
+  it("reads only recent text history without sending or emitting incoming events", async () => {
+    const b = bridge();
+    b.w.WPP.chat.getMessages = vi.fn().mockResolvedValue([
+      b.message("Earlier", "history-id"), { ...b.message("Image", "image-id"), type: "image" },
+    ]);
+    b.post.mockClear();
+    await b.command({ action: "history", chatId: "123@c.us" });
+    expect(b.w.WPP.chat.getMessages).toHaveBeenCalledWith("123@c.us", { count: 50 });
+    const result = b.post.mock.calls.find(([value]) => value.type === "result")?.[0].result;
+    expect(result.messages).toHaveLength(1);
+    expect(result.messages[0]).toMatchObject({ id: "history-id", fromMe: true, content: "Earlier" });
+    expect(b.w.WPP.chat.sendTextMessage).not.toHaveBeenCalled();
+    expect(b.post.mock.calls.some(([value]) => value.type === "incoming")).toBe(false);
+  });
   it("accepts new user-written self messages but ignores outgoing messages to others", () => {
     const b = bridge();
     b.receive(b.message("Kérdés", "user-id"));
