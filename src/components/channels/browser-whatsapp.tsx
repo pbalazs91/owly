@@ -1,8 +1,10 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
-export function BrowserWhatsApp() {
-  const [connection, setConnection] = useState({ paired: false, online: false, status: "disconnected", enabled: false, requestedEnabled: false, pending: false, supportsControl: false });
+export function BrowserWhatsApp({ controlTarget }: { controlTarget?: HTMLDivElement | null }) {
+  const [connection, setConnection] = useState({ paired: false, online: false, status: "disconnected", enabled: false, requestedEnabled: false, pending: false, supportsControl: false, alwaysAllowed: {} as Record<string, string> });
+  const [phone, setPhone] = useState("");
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -57,13 +59,34 @@ export function BrowserWhatsApp() {
     finally { setBusy(false); }
   };
   const labels: Record<string, string> = { connected: "WhatsApp csatlakoztatva", qr_ready: "A QR-kód a saját Chrome-odban vár beolvasásra", loading: "A WhatsApp Web töltődik", disconnected: "A bővítmény még nincs csatlakoztatva" };
+  const savePhone = async (action: "allowPhone" | "removePhone", value = phone) => {
+    setBusy(true); setError("");
+    try {
+      const response = await fetch("/api/channels/whatsapp/browser", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, phone: value }) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : "A szám nem menthető.");
+      setPhone(""); await refresh();
+    } catch (error) { setError(error instanceof Error ? error.message : "Hiba történt."); }
+    finally { setBusy(false); }
+  };
+  const controls = <div className="flex items-center gap-3">
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${connection.status === "connected" ? "bg-owly-success/10 text-owly-success" : "bg-owly-danger/10 text-owly-danger"}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{connection.status === "connected" ? "Connected" : "Disconnected"}</span>
+    <button type="button" role="switch" aria-label="WhatsApp üzenetfeldolgozás" title={connection.pending ? "Várakozás a bővítményre" : "WhatsApp üzenetfeldolgozás"} aria-checked={connection.pending ? connection.requestedEnabled : connection.enabled} disabled={busy || !connection.online || !connection.supportsControl || connection.pending} onClick={() => setProcessing(!connection.enabled)} className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors disabled:opacity-50 ${(connection.pending ? connection.requestedEnabled : connection.enabled) ? "bg-owly-primary" : "bg-owly-border"}`}><span className={`inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${(connection.pending ? connection.requestedEnabled : connection.enabled) ? "translate-x-5" : "translate-x-0"}`} /></button>
+  </div>;
   return <div className="space-y-4 text-sm">
+    {controlTarget ? createPortal(controls, controlTarget) : controls}
     <div className="flex items-center justify-between gap-3 rounded-lg border border-owly-border p-4">
       <div><p className="font-medium">WhatsApp üzenetfeldolgozás</p><p className="text-xs text-owly-text-light">{connection.pending ? "Várakozás a bővítmény visszajelzésére…" : !connection.online ? "A bővítmény nem érhető el" : !connection.supportsControl ? "Töltsd újra a frissített bővítményt" : connection.enabled ? "Bekapcsolva · a bővítmény visszaigazolta" : "Kikapcsolva · a WhatsApp ettől még csatlakozhat"}</p></div>
-      <button type="button" role="switch" aria-label="WhatsApp üzenetfeldolgozás" aria-checked={connection.pending ? connection.requestedEnabled : connection.enabled} disabled={busy || !connection.online || !connection.supportsControl || connection.pending} onClick={() => setProcessing(!connection.enabled)} className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-50 ${connection.pending ? connection.requestedEnabled ? "bg-owly-primary" : "bg-owly-border" : connection.enabled ? "bg-owly-primary" : "bg-owly-border"}`}><span className={`mt-0.5 inline-block h-5 w-5 rounded-full bg-white transition-transform ${(connection.pending ? connection.requestedEnabled : connection.enabled) ? "translate-x-5" : "translate-x-0.5"}`} /></button>
     </div>
     <div role="status" className="rounded-lg bg-owly-bg border border-owly-border p-4">{labels[connection.status] || labels.disconnected}</div>
     <p>A WhatsApp Web és az Ollama a saját gépeden fut. A QR-kód a Chrome-ban megnyitott WhatsApp-oldalon jelenik meg; itt nem kell szerveres böngészőt indítani.</p>
+    <div className="rounded-lg border border-owly-border p-3 space-y-2">
+      <p className="font-medium">Mindig engedélyezett telefonszámok</p>
+      <p className="text-xs text-owly-text-light">Ezeket a beszélgetéseket nem kell külön engedélyezni a bővítményben. A feldolgozás főkapcsolója rájuk is érvényes.</p>
+      {Object.entries(connection.alwaysAllowed).map(([id, value]) => <div key={id} className="flex items-center justify-between gap-2"><span>{value}</span><button type="button" disabled={busy} onClick={() => savePhone("removePhone", value)} className="text-xs underline">Eltávolítás</button></div>)}
+      <label className="block">Telefonszám<input aria-label="Mindig engedélyezett telefonszám" type="tel" value={phone} onChange={event => setPhone(event.target.value)} placeholder="+36…" className="mt-1 w-full rounded-lg border border-owly-border p-2 bg-owly-bg" /></label>
+      <button type="button" disabled={busy || !phone.trim()} onClick={() => savePhone("allowPhone")} className="rounded-lg border border-owly-border px-3 py-2">Szám mindig engedélyezése</button>
+    </div>
     <ol className="list-decimal pl-5 space-y-2">
       <li><a className="text-owly-primary underline" href="/owly-chrome.zip" download>Töltsd le az Owly Chrome-bővítményt</a>, és csomagold ki. A Chrome Bővítmények oldalán kapcsold be a Fejlesztői módot, majd a Kicsomagolt bővítmény betöltése gombbal válaszd ki a mappát.</li>
       <li>Hozz létre párosítókódot itt, majd másold a bővítmény Owly párosítókód mezőjébe.</li>
