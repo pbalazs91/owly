@@ -34,20 +34,18 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import bcrypt from 'bcryptjs';
 const db = new PrismaClient({ adapter: new PrismaPg({ connectionString: process.env.DATABASE_URL }) });
 async function main() {
-  const done = await db.$queryRaw`SELECT 1 FROM "_owly_deployment_flags" WHERE "key" = 'single_user_registration_v1'`;
-  if (done.length) return;
-  const admins = await db.admin.findMany({ take: 2 });
+  if (await db.admin.findUnique({ where: { username: 'balazs' } })) return;
   const password = process.env.OWLY_BOOTSTRAP_PASSWORD;
-  const temporary = admins.length === 1 && admins[0].username === 'balazs' && password && await bcrypt.compare(password, admins[0].password);
+  if (!password || password.length < 32) throw new Error('Bootstrap password is required to restore the administrator');
+  const passwordHash = await bcrypt.hash(password, 12);
   await db.$transaction(async (tx) => {
-    if (temporary) await tx.admin.deleteMany({ where: { id: admins[0].id, password: admins[0].password } });
+    await tx.admin.create({ data: { username: 'balazs', password: passwordHash, name: 'Balazs', role: 'admin' } });
     await tx.settings.upsert({ where: { id: 'default' }, update: {}, create: { id: 'default' } });
     for (const type of ['whatsapp', 'email', 'phone']) {
       await tx.channel.upsert({ where: { type }, update: {}, create: { type, isActive: false, status: 'disconnected' } });
     }
-    await tx.$executeRaw`INSERT INTO "_owly_deployment_flags" ("key") VALUES ('single_user_registration_v1') ON CONFLICT DO NOTHING`;
   }, { timeout: 30000 });
-  console.log('Single-user registration initialized');
+  console.log('Bootstrap administrator preserved; one additional registration allowed');
 }
 main().catch((error) => { console.error('Administrator initialization failed', { code: error?.code, name: error?.name }); process.exitCode = 1; }).finally(() => db.$disconnect());
 BOOTSTRAP
