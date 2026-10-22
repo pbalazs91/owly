@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
+import { SECRET_FIELDS } from "@/lib/security";
 import {
   Settings as SettingsIcon,
   Bot,
@@ -464,6 +465,12 @@ function AISection({
           ]}
         />
       </FormField>
+      {data.aiProvider !== "openai" && (
+        <p role="status" className="text-sm text-owly-danger">
+          A választás elmenthető, de ebben a verzióban az automatikus válaszadás csak OpenAI-val működik.
+          Az Ollama és a Claude még nincs bekötve; a mentés önmagában nem aktiválja őket.
+        </p>
+      )}
       <FormField label="Model" description="The specific model to use for AI responses.">
         <SelectInput
           value={data.aiModel}
@@ -779,7 +786,10 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetch("/api/settings")
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to load settings");
+        return r.json();
+      })
       .then((settings) => {
         const merged = { ...defaultSettings };
         for (const key of Object.keys(merged) as (keyof SettingsData)[]) {
@@ -803,6 +813,7 @@ export default function SettingsPage() {
       const fields = sectionFields[activeTab];
       const payload: Record<string, unknown> = {};
       for (const f of fields) {
+        if ((SECRET_FIELDS as readonly string[]).includes(f) && data[f] === "***") continue;
         payload[f] = data[f];
       }
 
@@ -812,10 +823,23 @@ export default function SettingsPage() {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) throw new Error("Save failed");
-      addToast("success", "Settings saved successfully");
-    } catch {
-      addToast("error", "Failed to save settings. Please try again.");
+      const saved = await res.json();
+      if (!res.ok) throw new Error(saved.error || "A mentés nem sikerült.");
+      if (fields.some((field) => !(field in saved))) {
+        throw new Error("A kiszolgáló nem igazolta vissza a beállítások mentését.");
+      }
+      setData((previous) => {
+        const next = { ...previous };
+        for (const field of fields) {
+          (next as unknown as Record<string, unknown>)[field] = saved[field];
+        }
+        return next;
+      });
+      addToast("success", activeTab === "ai" && saved.aiProvider !== "openai"
+        ? "A választás elmentve. Ez az AI-szolgáltató még nincs bekötve, ezért nem fog válaszolni."
+        : "Beállítások elmentve.");
+    } catch (error) {
+      addToast("error", error instanceof Error ? error.message : "A mentés nem sikerült. Próbáld újra.");
     } finally {
       setSaving(false);
     }
