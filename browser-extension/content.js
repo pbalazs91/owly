@@ -16,11 +16,12 @@
     }
   });
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
-    if (sender.id !== chrome.runtime.id || !['WA_ACTIVE', 'WA_SEND'].includes(message.type)) return;
+    if (sender.id !== chrome.runtime.id || !['WA_ACTIVE', 'WA_SEND', 'WA_SELF', 'WA_TEST'].includes(message.type)) return;
     const requestId = crypto.randomUUID();
     const timer = setTimeout(() => { pending.delete(requestId); respond({ error: 'A WhatsApp nem válaszolt időben.' }); }, 30000);
     pending.set(requestId, { timer, respond });
-    window.postMessage({ channel: 'owly-wa-content-v1', requestId, action: message.type === 'WA_ACTIVE' ? 'active' : 'send', chatId: message.chatId, content: message.content }, location.origin);
+    const actions = { WA_ACTIVE: 'active', WA_SEND: 'send', WA_SELF: 'self', WA_TEST: 'test' };
+    window.postMessage({ channel: 'owly-wa-content-v1', requestId, action: actions[message.type], chatId: message.chatId, content: message.content }, location.origin);
     return true;
   });
 })();

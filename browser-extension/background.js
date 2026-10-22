@@ -1,6 +1,6 @@
 const OWLY = 'https://owlyapp.onrender.com';
 const OLLAMA = 'http://127.0.0.1:11434';
-const DEFAULTS = { token: '', enabled: false, autoReply: false, model: 'llama3.2:3b', allowed: {}, primaryTab: null, waStatus: 'disconnected', lastStatusAt: 0, error: '', drafts: [], seen: [], pending: [] };
+const DEFAULTS = { token: '', enabled: false, controlRevision: '', autoReply: false, model: 'llama3.2:3b', allowed: {}, primaryTab: null, waStatus: 'disconnected', lastStatusAt: 0, error: '', drafts: [], seen: [], pending: [] };
 chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 const state = async () => ({ ...DEFAULTS, ...await chrome.storage.local.get(Object.keys(DEFAULTS)) });
 const save = (value) => chrome.storage.local.set(value);
@@ -17,7 +17,13 @@ async function api(action, data = {}) {
 }
 async function heartbeat() {
   const settings = await state();
-  if (settings.token) await api('heartbeat', { status: settings.enabled && Date.now() - settings.lastStatusAt < 65000 ? settings.waStatus : 'disconnected' });
+  if (!settings.token) return;
+  const status = Date.now() - settings.lastStatusAt < 65000 ? settings.waStatus : 'disconnected';
+  const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2 });
+  if (typeof result.desiredEnabled === 'boolean' && typeof result.controlRevision === 'string' && result.controlRevision !== settings.controlRevision) {
+    await save({ enabled: result.desiredEnabled, controlRevision: result.controlRevision });
+    await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2 });
+  }
 }
 async function tabMessage(type, data = {}) {
   const settings = await state();
@@ -101,6 +107,22 @@ async function handle(message, sender) {
     const chat = await tabMessage('WA_ACTIVE');
     if (!/^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(chat.chatId)) throw new Error('Csak személyes beszélgetés engedélyezhető.');
     const settings = await state(); await save({ allowed: { ...settings.allowed, [chat.chatId]: chat.name } }); return chat;
+  }
+  if (message.type === 'SELF_OPEN') {
+    const chat = await tabMessage('WA_SELF');
+    if (!/^\d+@(c\.us|lid)$/.test(chat.chatId)) throw new Error('A saját beszélgetés nem érhető el.');
+    const settings = await state();
+    await save({ allowed: { ...settings.allowed, [chat.chatId]: chat.name } });
+    return chat;
+  }
+  if (message.type === 'SELF_TEST') {
+    const settings = await state();
+    if (!settings.enabled) throw new Error('Előbb kapcsold be és mentsd el az üzenetfeldolgozást.');
+    if (typeof message.content !== 'string' || !message.content.trim() || message.content.length > 1000) throw new Error('Írj egy rövid tesztüzenetet.');
+    const chat = await tabMessage('WA_SELF');
+    if (!/^\d+@(c\.us|lid)$/.test(chat.chatId)) throw new Error('A saját beszélgetés nem érhető el.');
+    await save({ allowed: { ...settings.allowed, [chat.chatId]: chat.name } });
+    return tabMessage('WA_TEST', { content: message.content.trim() });
   }
   if (message.type === 'REMOVE_CHAT') {
     const settings = await state(); delete settings.allowed[message.chatId]; await save({ allowed: settings.allowed }); return { ok: true };

@@ -47,5 +47,7 @@ $('save').onclick = () => perform($('save'), async () => {
 $('allow').onclick = () => perform($('allow'), async () => { await request('ALLOW_ACTIVE'); await render(); });
 $('test').onclick = () => perform($('test'), async () => { const result = await request('TEST_OLLAMA'); $('notice').textContent = 'Az Ollama elérhető. Telepített modellek: ' + result.models; });
 $('retry').onclick = () => perform($('retry'), async () => { await request('RETRY_PENDING'); await render(); });
+$('self').onclick = () => perform($('self'), async () => { await request('SELF_OPEN'); await render(); $('notice').textContent = 'A saját beszélgetés engedélyezve. Bekapcsolt feldolgozásnál az ide írt új kérdésekből tervezet készül.'; });
+$('send-test').onclick = () => perform($('send-test'), async () => { await request('SELF_TEST', { content: $('test-message').value }); $('notice').textContent = 'Tesztüzenet elküldve saját magadnak. A választervezet elkészítése eltarthat egy ideig.'; });
 render(true).catch((error) => { $('notice').textContent = error.message; });
 setInterval(() => render().catch(() => {}), 3000);

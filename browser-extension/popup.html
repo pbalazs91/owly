@@ -14,6 +14,11 @@
   <div class="row"><button id="save">Beállítások mentése</button><button id="test" class="secondary">Ollama ellenőrzése</button></div>
   <h2>3. Engedélyezett beszélgetések</h2>
   <button id="allow" class="secondary">A WhatsAppban megnyitott beszélgetés engedélyezése</button><div id="allowed"></div>
+  <h2>Saját tesztbeszélgetés</h2>
+  <button id="self" class="secondary">Beszélgetés magammal megnyitása és engedélyezése</button>
+  <label>Tesztüzenet saját magadnak<input id="test-message" type="text" maxlength="1000" value="Szia! Miben tudsz segíteni?" autocomplete="off"></label>
+  <button id="send-test">Tesztüzenet elküldése magamnak</button>
+  <p class="help">A gomb csak a saját WhatsApp-fiókodnak küld. A saját beszélgetésbe ezután kézzel is írhatsz kérdéseket. Bekapcsolt feldolgozásnál választervezet készül; az AI saját válaszai nem indítanak újabb választ.</p>
   <h2>Választervezetek</h2><div id="drafts"></div>
   <button id="retry" class="secondary">Sikertelen feldolgozás újrapróbálása</button>
   <p class="help">A gép, a Chrome és a WhatsApp-lap maradjon nyitva. Az engedélyezett új üzenetek és az elküldött válaszok az Owly Render-adatbázisába kerülnek. A párosítókódot ne oszd meg.</p>
