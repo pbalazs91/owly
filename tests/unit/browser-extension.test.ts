@@ -14,7 +14,7 @@ function extension(initial = {}) {
   const chrome = {
     runtime: { id: "extension-id", getURL: (path: string) => "chrome-extension://extension-id/" + path, onMessage: { addListener: vi.fn() } },
     storage: { local: { setAccessLevel: vi.fn(), get: async () => structuredClone(stored), set: async (value: object) => Object.assign(stored, structuredClone(value)) } },
-    tabs: { get: async () => ({ id: 1, url: 'https://web.whatsapp.com/' }), query: vi.fn().mockResolvedValue([{ id: 1, windowId: 7 }]), update: vi.fn().mockResolvedValue({ id: 1, windowId: 7 }), create: vi.fn().mockResolvedValue({ id: 2, windowId: 8 }), sendMessage: send, onRemoved: { addListener: vi.fn() } },
+    tabs: { get: async () => ({ id: 1, url: 'https://web.whatsapp.com/' }), query: vi.fn().mockResolvedValue([{ id: 1, windowId: 7 }]), update: vi.fn().mockResolvedValue({ id: 1, windowId: 7 }), reload: vi.fn().mockResolvedValue(undefined), create: vi.fn().mockResolvedValue({ id: 2, windowId: 8 }), sendMessage: send, onRemoved: { addListener: vi.fn() } },
     windows: { update: vi.fn().mockResolvedValue({}) },
     alarms: { create: vi.fn(), onAlarm: { addListener: vi.fn() } },
   };
@@ -27,6 +27,19 @@ const wa = { id: "extension-id", tab: { id: 1, url: "https://web.whatsapp.com/" 
 const incoming = { id: "one", chatId: "123@c.us", content: "Kérdés", name: "Ügyfél" };
 
 describe("Chrome bridge permissions and delivery", () => {
+  it("automatically allows centrally configured numbers without per-chat approval", async () => {
+    const app = extension({ token: "private-token", enabled: true, remoteAllowed: { '123@c.us': '+123' } });
+    await app.incoming(incoming);
+    expect(app.stored.drafts).toHaveLength(1);
+    expect(app.stored.drafts[0].content).toBe('Helyi válasz');
+  });
+  it("recovers the live WhatsApp tab from the content-script health check", async () => {
+    const app = extension({ token: "private-token", primaryTab: 55 });
+    app.send.mockRejectedValueOnce(new Error('old tab closed')).mockResolvedValue({ contentReady: true, status: 'connected', lastStatusAt: Date.now() });
+    await app.heartbeat();
+    expect(app.stored.primaryTab).toBe(1);
+    expect(JSON.parse(app.fetch.mock.calls[0][1].body).status).toBe('connected');
+  });
   it("reports a live WhatsApp connection even when processing is paused", async () => {
     const app = extension({ token: "private-token", enabled: false, waStatus: "connected", lastStatusAt: Date.now() });
     await app.heartbeat();
@@ -43,6 +56,7 @@ describe("Chrome bridge permissions and delivery", () => {
     const app = extension();
     await app.handle({ type: "OPEN_WA" }, popup);
     expect(app.chrome.tabs.update).toHaveBeenCalledWith(1, { active: true });
+    expect(app.chrome.tabs.reload).toHaveBeenCalledWith(1);
     expect(app.chrome.windows.update).toHaveBeenCalledWith(7, { focused: true });
     expect(app.stored.primaryTab).toBe(1);
   });
