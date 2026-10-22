@@ -3,6 +3,7 @@
 import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import { fetchList } from "@/lib/fetch-list";
+import { KnowledgeFileImport } from "@/components/knowledge-file-import";
 import {
   BookOpen,
   Plus,
@@ -110,6 +111,7 @@ export default function KnowledgeBasePage() {
   const [editingEntry, setEditingEntry] = useState<KnowledgeEntry | null>(null);
   const [entryForm, setEntryForm] = useState({ title: "", content: "", priority: 0 });
   const [savingEntry, setSavingEntry] = useState(false);
+  const [entryError, setEntryError] = useState("");
 
   // Delete confirmation
   const [deleteTarget, setDeleteTarget] = useState<{ type: "category" | "entry"; id: string; name: string } | null>(null);
@@ -202,6 +204,7 @@ export default function KnowledgeBasePage() {
   // --- Entry CRUD ---
 
   function openEntryModal(entry?: KnowledgeEntry) {
+    setEntryError("");
     if (entry) {
       setEditingEntry(entry);
       setEntryForm({ title: entry.title, content: entry.content, priority: entry.priority });
@@ -215,6 +218,7 @@ export default function KnowledgeBasePage() {
   async function saveEntry() {
     if (!entryForm.title.trim() || !selectedCategoryId) return;
     setSavingEntry(true);
+    setEntryError("");
     try {
       const url = editingEntry
         ? `/api/knowledge/entries/${editingEntry.id}`
@@ -229,9 +233,13 @@ export default function KnowledgeBasePage() {
         setShowEntryModal(false);
         await fetchEntries(selectedCategoryId);
         await fetchCategories();
+      } else {
+        const data = await res.json();
+        setEntryError(typeof data.error === "string" ? data.error : "A bejegyzés nem menthető.");
       }
     } catch (err) {
       console.error("Failed to save entry:", err);
+      setEntryError("A bejegyzés mentése nem sikerült. Próbáld újra.");
     } finally {
       setSavingEntry(false);
     }
@@ -432,7 +440,7 @@ export default function KnowledgeBasePage() {
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-owly-primary hover:bg-owly-primary-dark rounded-lg transition-colors"
                 >
                   <Plus className="h-3.5 w-3.5" />
-                  Add Entry
+                  Bejegyzés / fájlfeltöltés
                 </button>
               </div>
 
@@ -456,7 +464,7 @@ export default function KnowledgeBasePage() {
                       className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-owly-primary border border-owly-primary/30 hover:bg-owly-primary-50 rounded-lg transition-colors"
                     >
                       <Plus className="h-3.5 w-3.5" />
-                      Add First Entry
+                      Bejegyzés / fájlfeltöltés
                     </button>
                   </div>
                 ) : (
@@ -660,7 +668,7 @@ export default function KnowledgeBasePage() {
           <div className="relative bg-owly-surface rounded-xl shadow-xl border border-owly-border w-full max-w-lg mx-4">
             <div className="flex items-center justify-between px-5 py-4 border-b border-owly-border">
               <h3 className="font-semibold text-owly-text">
-                {editingEntry ? "Edit Entry" : "New Entry"}
+                {editingEntry ? "Edit Entry" : "Bejegyzés vagy fájl feltöltése"}
               </h3>
               <button
                 onClick={() => setShowEntryModal(false)}
@@ -670,7 +678,9 @@ export default function KnowledgeBasePage() {
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+              <KnowledgeFileImport onImported={(value) => setEntryForm((current) => ({ ...current, ...value }))} />
+              {entryError && <p role="alert" className="text-sm text-red-600">{entryError}</p>}
               <div>
                 <label className="block text-xs font-medium text-owly-text mb-1.5">
                   Title
