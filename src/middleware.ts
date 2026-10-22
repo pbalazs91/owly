@@ -79,7 +79,7 @@ export function middleware(request: NextRequest) {
   }
 
   // Public paths that don't require auth
-  const publicPaths = ["/login", "/setup", "/api/auth", "/api/health", "/api/openapi.json"];
+  const publicPaths = ["/login", "/register", "/setup", "/api/auth", "/api/health", "/api/openapi.json"];
   const isPublic = publicPaths.some((p) => pathname.startsWith(p));
 
   // Channel webhook endpoints (authenticated via provider signatures, not JWT)
