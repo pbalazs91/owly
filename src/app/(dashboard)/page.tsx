@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { Header } from "@/components/layout/header";
 import { StatCard } from "@/components/ui/stat-card";
 import { OnboardingChecklist } from "@/components/ui/onboarding-checklist";
@@ -64,6 +65,7 @@ const channelIcons: Record<string, React.ElementType> = {
 };
 
 export default async function DashboardPage() {
+  await connection();
   const stats = await getStats();
 
   return (
