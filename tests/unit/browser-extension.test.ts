@@ -27,6 +27,18 @@ const wa = { id: "extension-id", tab: { id: 1, url: "https://web.whatsapp.com/" 
 const incoming = { id: "one", chatId: "123@c.us", content: "Kérdés", name: "Ügyfél" };
 
 describe("Chrome bridge permissions and delivery", () => {
+  it("reports a live WhatsApp connection even when processing is paused", async () => {
+    const app = extension({ token: "private-token", enabled: false, waStatus: "connected", lastStatusAt: Date.now() });
+    await app.heartbeat();
+    expect(JSON.parse(app.fetch.mock.calls[0][1].body)).toMatchObject({ status: "connected", enabled: false, protocol: 2 });
+  });
+  it("applies and acknowledges remote processing changes", async () => {
+    const app = extension({ token: "private-token", enabled: true });
+    app.fetch.mockResolvedValueOnce({ ok: true, json: async () => ({ desiredEnabled: false, controlRevision: "revision1" }) });
+    await app.heartbeat();
+    expect(app.stored.enabled).toBe(false);
+    expect(JSON.parse(app.fetch.mock.calls[1][1].body)).toMatchObject({ enabled: false, controlRevision: "revision1" });
+  });
   it("brings an existing WhatsApp window forward and selects its tab", async () => {
     const app = extension();
     await app.handle({ type: "OPEN_WA" }, popup);
