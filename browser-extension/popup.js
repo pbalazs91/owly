@@ -1,4 +1,6 @@
 const $ = (id) => document.getElementById(id);
+$('version').textContent = 'Betöltött bővítmény: ' + chrome.runtime.getManifest().version;
+$('reload').onclick = () => chrome.runtime.reload();
 async function request(type, data = {}) {
   const result = await chrome.runtime.sendMessage({ type, ...data });
   if (result?.error) throw new Error(result.error);
