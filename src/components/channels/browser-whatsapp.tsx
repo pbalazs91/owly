@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export function BrowserWhatsApp({ controlTarget }: { controlTarget?: HTMLDivElement | null }) {
-  const [connection, setConnection] = useState({ paired: false, online: false, status: "disconnected", enabled: false, requestedEnabled: false, pending: false, supportsControl: false, alwaysAllowed: {} as Record<string, string>, browserVersion: "", history: null as null | { status: string; imported: number; chats: number; error?: string } });
+  const [connection, setConnection] = useState({ paired: false, online: false, status: "disconnected", enabled: false, requestedEnabled: false, pending: false, supportsControl: false, alwaysAllowed: {} as Record<string, string>, browserVersion: "", history: null as null | { status: string; imported: number; chats: number; skipped?: number; warning?: string; error?: string } });
   const [phone, setPhone] = useState("");
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
@@ -94,6 +94,7 @@ export function BrowserWhatsApp({ controlTarget }: { controlTarget?: HTMLDivElem
       }} className="rounded-lg bg-owly-primary px-3 py-2 text-white disabled:opacity-50">Engedélyezett beszélgetések átmásolása</button>
       {!["0.3.0", "0.4.0"].includes(connection.browserVersion) && <p className="text-xs text-owly-text-light">Az importhoz töltsd újra a friss bővítményt, majd nyisd meg vele a WhatsAppot.</p>}
       {connection.history && <p role="status" className="text-xs">{connection.history.status === "pending" ? "Várakozás a bővítményre / másolás folyamatban…" : connection.history.status === "done" ? `Kész: ${connection.history.chats} beszélgetés, ${connection.history.imported} új üzenet.` : connection.history.error || "Az import megszakadt. Újra próbálható."}</p>}
+      {!!connection.history?.skipped && <p className="text-xs text-amber-700">{connection.history.skipped} beszélgetés kimaradt. {connection.history.warning || "Ellenőrizd, hogy a beszélgetés elérhető a WhatsAppban."}</p>}
     </div>
     <p>A WhatsApp Web és az Ollama a saját gépeden fut. A QR-kód a Chrome-ban megnyitott WhatsApp-oldalon jelenik meg; itt nem kell szerveres böngészőt indítani.</p>
     <div className="rounded-lg border border-owly-border p-3 space-y-2">
