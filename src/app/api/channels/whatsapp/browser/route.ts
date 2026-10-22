@@ -48,6 +48,8 @@ export async function POST(request: NextRequest) {
     if (body.action === "requestHistory") {
       const auth = await requireAuth(request, "channels:update");
       if (!isAuthenticated(auth)) return auth;
+      const rocket = await prisma.rocketIntegration.findUnique({ where: { id: "default" } });
+      if (rocket && rocket.mode !== "disabled") return json({ error: "RocketSender módban csak ügyfélválaszra indul import. Az általános előzményimport szünetel." }, 409);
       if (!config.browserTokenId) return json({ error: "Előbb párosítsd a bővítményt." }, 409);
       const history = { id: randomUUID(), status: "pending", imported: 0, chats: 0 };
       await prisma.channel.update({ where: { type: "whatsapp" }, data: { config: { ...config, browserHistory: history } } });
@@ -121,7 +123,8 @@ export async function POST(request: NextRequest) {
         },
       } });
       const history = config.browserHistory as { id?: string; status?: string } | undefined;
-      return json({ ok: true, alwaysAllowed: config.browserAlwaysAllowed || {}, ...(history?.status === "pending" ? { historyRequest: history.id } : {}), ...(pending ? { desiredEnabled: config.browserDesiredEnabled === true, controlRevision: config.browserControlRevision } : {}) });
+      const rocket = await prisma.rocketIntegration.findUnique({ where: { id: "default" } });
+      return json({ ok: true, rocket: { enabled: !!rocket && (rocket.mode === "trial" || (rocket.mode === "active" && rocket.compatibilityVerified)), accountId: rocket?.accountId || "" }, alwaysAllowed: config.browserAlwaysAllowed || {}, ...((!rocket || rocket.mode === "disabled") && history?.status === "pending" ? { historyRequest: history.id } : {}), ...(pending ? { desiredEnabled: config.browserDesiredEnabled === true, controlRevision: config.browserControlRevision } : {}) });
     }
 
     if (body.action === "historyResult" || body.action === "history") {
@@ -151,6 +154,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.action === "incoming") {
+      const rocket = await prisma.rocketIntegration.findUnique({ where: { id: "default" } });
+      if (rocket && rocket.mode !== "disabled") return json({ error: "RocketSender módban csak a válaszimport használható. Töltsd újra a 0.4.0-s bővítményt." }, 409);
       if (config.browserDesiredEnabled === false) return json({ error: "Az üzenetfeldolgozás szünetel." }, 409);
       const parsed = incomingSchema.safeParse(body);
       if (!parsed.success) return json({ error: "Csak érvényes, személyes szöveges üzenet fogadható." }, 400);
