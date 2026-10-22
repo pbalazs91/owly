@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
     requestedEnabled: config.browserDesiredEnabled === true,
     alwaysAllowed: config.browserAlwaysAllowed || {},
     browserVersion: typeof config.browserVersion === "string" ? config.browserVersion : "",
+    history: config.browserHistory || null,
   });
 }
 
@@ -44,6 +45,14 @@ export async function POST(request: NextRequest) {
     const channel = await prisma.channel.findUnique({ where: { type: "whatsapp" } });
     const config = (channel?.config || {}) as Record<string, unknown>;
 
+    if (body.action === "requestHistory") {
+      const auth = await requireAuth(request, "channels:update");
+      if (!isAuthenticated(auth)) return auth;
+      if (!config.browserTokenId) return json({ error: "Előbb párosítsd a bővítményt." }, 409);
+      const history = { id: randomUUID(), status: "pending", imported: 0, chats: 0 };
+      await prisma.channel.update({ where: { type: "whatsapp" }, data: { config: { ...config, browserHistory: history } } });
+      return json({ ok: true });
+    }
     if (body.action === "allowPhone" || body.action === "removePhone") {
       const auth = await requireAuth(request, "channels:update");
       if (!isAuthenticated(auth)) return auth;
@@ -111,7 +120,34 @@ export async function POST(request: NextRequest) {
           ...(pending ? {} : { browserDesiredEnabled: enabled, browserAppliedRevision: typeof body.controlRevision === "string" ? body.controlRevision : "" }),
         },
       } });
-      return json({ ok: true, alwaysAllowed: config.browserAlwaysAllowed || {}, ...(pending ? { desiredEnabled: config.browserDesiredEnabled === true, controlRevision: config.browserControlRevision } : {}) });
+      const history = config.browserHistory as { id?: string; status?: string } | undefined;
+      return json({ ok: true, alwaysAllowed: config.browserAlwaysAllowed || {}, ...(history?.status === "pending" ? { historyRequest: history.id } : {}), ...(pending ? { desiredEnabled: config.browserDesiredEnabled === true, controlRevision: config.browserControlRevision } : {}) });
+    }
+
+    if (body.action === "historyResult" || body.action === "history") {
+      const job = config.browserHistory as { id?: string; status?: string } | undefined;
+      if (!job?.id || body.requestId !== job.id) return json({ error: "Nincs ilyen előzményimport." }, 409);
+      if (body.action === "historyResult") {
+        const result = z.object({ status: z.enum(["done", "error"]), imported: z.number().int().min(0).max(2500), chats: z.number().int().min(0).max(50), error: z.string().max(300).optional() }).safeParse(body);
+        if (!result.success) return json({ error: "Hibás importállapot." }, 400);
+        await prisma.channel.update({ where: { type: "whatsapp" }, data: { config: { ...config, browserHistory: { id: job.id, ...result.data } } } });
+        return json({ ok: true });
+      }
+      if (job.status !== "pending") return json({ error: "Az import már lezárult." }, 409);
+      const parsed = z.object({ chatId: chatIdSchema, name: z.string().max(200), messages: z.array(z.object({ id: z.string().min(1).max(250), content: z.string().trim().min(1).max(6000), fromMe: z.boolean(), timestamp: z.number().int().min(1).max(Date.now() + 86400000) })).min(1).max(2) }).safeParse(body);
+      if (!parsed.success) return json({ error: "Hibás szöveges előzmény." }, 400);
+      const input = parsed.data;
+      const conversation = await prisma.conversation.upsert({ where: { id: messageId("conversation:" + input.chatId) }, update: {}, create: { id: messageId("conversation:" + input.chatId), channel: "whatsapp", customerContact: input.chatId, customerName: input.name } });
+      let imported = 0;
+      for (const item of input.messages) {
+        const id = messageId(input.chatId + ":" + item.id);
+        if (await prisma.message.findUnique({ where: { id } })) continue;
+        // Sent AI replies use a separate deterministic ID; match their WhatsApp ID too.
+        if (item.fromMe && await prisma.message.findFirst({ where: { conversationId: conversation.id, toolCalls: { path: ["whatsappMessageId"], equals: item.id } } })) continue;
+        await prisma.message.upsert({ where: { id }, update: {}, create: { id, conversationId: conversation.id, role: item.fromMe ? "assistant" : "customer", content: item.content, createdAt: new Date(item.timestamp), toolCalls: { whatsappMessageId: item.id, historyImport: true } } });
+        imported++;
+      }
+      return json({ ok: true, imported });
     }
 
     if (body.action === "incoming") {
@@ -156,12 +192,12 @@ Tudásbázis:\n${context || "Még nincs vállalati tudásbázis."}`;
     }
 
     if (body.action === "sent") {
-      const sent = z.object({ messageId: z.string().regex(/^wab-[a-f0-9]{64}$/), content: z.string().trim().min(1).max(6000) }).safeParse(body);
+      const sent = z.object({ messageId: z.string().regex(/^wab-[a-f0-9]{64}$/), content: z.string().trim().min(1).max(6000), whatsappId: z.string().max(250).optional() }).safeParse(body);
       if (!sent.success) return json({ error: "Hibás válasz." }, 400);
       const original = await prisma.message.findUnique({ where: { id: sent.data.messageId }, include: { conversation: true } });
       if (!original || original.role !== "customer" || original.conversation.channel !== "whatsapp") return json({ error: "Az üzenet nem található." }, 404);
       const id = messageId("reply:" + original.id);
-      await prisma.message.upsert({ where: { id }, update: {}, create: { id, conversationId: original.conversationId, role: "assistant", content: sent.data.content } });
+      await prisma.message.upsert({ where: { id }, update: {}, create: { id, conversationId: original.conversationId, role: "assistant", content: sent.data.content, ...(sent.data.whatsappId ? { toolCalls: { whatsappMessageId: sent.data.whatsappId } } : {}) } });
       await prisma.conversation.update({ where: { id: original.conversationId }, data: { updatedAt: new Date() } });
       emitNewMessage(original.conversationId, { id, role: "assistant", content: sent.data.content });
       return json({ ok: true });
