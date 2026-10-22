@@ -16,6 +16,7 @@ export async function GET(
     const customer = await prisma.customer.findUnique({
       where: { id },
       include: {
+        _count: { select: { notes: true } },
         notes: {
           orderBy: { createdAt: "desc" },
         },
