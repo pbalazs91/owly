@@ -155,6 +155,7 @@ function WhatsAppCard({
 }) {
   const cfg = channel.config as Record<string, string>;
   const [isActive, setIsActive] = useState(channel.isActive);
+  const [browserControlTarget, setBrowserControlTarget] = useState<HTMLDivElement | null>(null);
   const [mode, setMode] = useState<WhatsAppMode>(
     cfg.mode === "api" ? "api" : "browser"
   );
@@ -232,7 +233,7 @@ function WhatsAppCard({
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3">
+          <div ref={setBrowserControlTarget} className="flex items-center gap-3">
             {mode !== "browser" && <StatusBadge status={channel.status} />}
             {mode !== "browser" && <Toggle enabled={isActive} onChange={setIsActive} />}
           </div>
@@ -281,7 +282,7 @@ function WhatsAppCard({
           </div>
         </div>
 
-        {mode === "browser" ? <BrowserWhatsApp /> : mode === "web" ? (
+        {mode === "browser" ? <BrowserWhatsApp controlTarget={browserControlTarget} /> : mode === "web" ? (
           <div>
             {isConnected ? (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4">
