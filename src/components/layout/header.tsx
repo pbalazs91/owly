@@ -4,6 +4,7 @@ import { Bell, Search, Sun, Moon, LogOut, User } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { useTheme } from "@/lib/hooks/use-theme";
 import { useRouter } from "next/navigation";
+import { GlobalSearch } from "./global-search";
 
 interface HeaderProps {
   title: string;
@@ -14,15 +15,34 @@ interface HeaderProps {
 export function Header({ title, description, actions }: HeaderProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<{ total: number; items: { id: string; title: string; href: string }[] }>({ total: 0, items: [] });
+  const [notificationError, setNotificationError] = useState("");
+  const notificationRef = useRef<HTMLDivElement>(null);
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let active = true;
+    async function refresh() {
+      try {
+        const response = await fetch("/api/notifications", { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) throw new Error();
+        if (active) { setNotifications(data); setNotificationError(""); }
+      } catch { if (active) setNotificationError("Az értesítések nem tölthetők be."); }
+    }
+    refresh(); const timer = setInterval(refresh, 60000);
+    return () => { active = false; clearInterval(timer); };
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setUserMenuOpen(false);
       }
+      if (notificationRef.current && !notificationRef.current.contains(e.target as Node)) setNotificationsOpen(false);
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
@@ -47,15 +67,7 @@ export function Header({ title, description, actions }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-2">
-        {searchOpen && (
-          <input
-            type="text"
-            placeholder="Search..."
-            className="px-3 py-1.5 text-sm border border-owly-border rounded-lg bg-owly-surface text-owly-text focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary w-64 animate-slide-in-down transition-theme"
-            autoFocus
-            onBlur={() => setSearchOpen(false)}
-          />
-        )}
+        {searchOpen && <GlobalSearch onClose={() => setSearchOpen(false)} />}
         <button
           onClick={() => setSearchOpen(!searchOpen)}
           className="p-2 text-owly-text-light hover:text-owly-text hover:bg-owly-primary-50 rounded-lg transition-colors"
@@ -68,6 +80,7 @@ export function Header({ title, description, actions }: HeaderProps) {
           onClick={toggleTheme}
           className="p-2 text-owly-text-light hover:text-owly-text hover:bg-owly-primary-50 rounded-lg transition-colors"
           title={theme === "light" ? "Dark mode" : "Light mode"}
+          aria-pressed={theme === "dark"}
         >
           {theme === "light" ? (
             <Moon className="h-5 w-5" />
@@ -76,10 +89,13 @@ export function Header({ title, description, actions }: HeaderProps) {
           )}
         </button>
 
-        <button className="relative p-2 text-owly-text-light hover:text-owly-text hover:bg-owly-primary-50 rounded-lg transition-colors">
+        <div ref={notificationRef} className="relative" onKeyDown={e => { if (e.key === "Escape") setNotificationsOpen(false); }}>
+        <button title="Értesítések" aria-expanded={notificationsOpen} onClick={() => setNotificationsOpen(!notificationsOpen)} className="relative p-2 text-owly-text-light hover:text-owly-text hover:bg-owly-primary-50 rounded-lg transition-colors">
           <Bell className="h-5 w-5" />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-owly-danger rounded-full" />
+          {!notificationError && notifications.total > 0 && <span aria-label={`${notifications.total} figyelmet igénylő esemény`} className="absolute top-0 right-0 min-w-4 rounded-full bg-owly-danger px-1 text-[10px] text-white">{notifications.total}</span>}
         </button>
+        {notificationsOpen && <div role="region" aria-label="Értesítések" className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[85vw] rounded-lg border border-owly-border bg-owly-surface p-4 shadow-lg"><p className="font-medium mb-2">Figyelmet igénylő események</p>{notificationError ? <p role="alert">{notificationError}</p> : notifications.items.length ? notifications.items.map(item => <a key={item.id} href={item.href} className="block border-t border-owly-border py-2 text-sm hover:text-owly-primary">{item.title}</a>) : <p className="text-sm text-owly-text-light">Nincs figyelmet igénylő esemény.</p>}</div>}
+        </div>
 
         {actions}
 
