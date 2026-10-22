@@ -59,12 +59,17 @@
         const id = idOf(chat?.id);
         if (!/^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(id)) throw new Error('Nyiss meg egy személyes beszélgetést a WhatsAppban.');
         post('result', { requestId, result: { chatId: id, name: String(chat.formattedTitle || chat.name || id).slice(0, 200) } });
+      } else if (action === 'history') {
+        if (!/^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(chatId)) throw new Error('Csak személyes beszélgetés másolható.');
+        const rows = await window.WPP.chat.getMessages(chatId, { count: 50 });
+        const messages = rows.filter(msg => msg.type === 'chat' && typeof msg.body === 'string' && msg.body.trim() && idOf(msg.id) && Number(msg.t) > 0).map(msg => ({ id: idOf(msg.id).slice(0, 250), content: msg.body.slice(0, 6000), fromMe: !!(msg.id?.fromMe || msg.fromMe), timestamp: Math.round(Number(msg.t) * 1000) })).sort((a, b) => a.timestamp - b.timestamp);
+        post('result', { requestId, result: { messages } });
       } else if (action === 'send') {
         if (!/^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(chatId) || typeof content !== 'string' || !content.trim() || content.length > 6000) throw new Error('Hibás válasz.');
         pendingSends.push({ chatId: normalize(chatId), content, at: Date.now() });
         pendingSends = pendingSends.slice(-100);
-        await window.WPP.chat.sendTextMessage(chatId, content);
-        post('result', { requestId, result: { sent: true } });
+        const sent = await window.WPP.chat.sendTextMessage(chatId, content);
+        post('result', { requestId, result: { sent: true, whatsappId: idOf(sent?.id) || undefined } });
       }
     } catch (error) { post('result', { requestId, error: error.message || 'WhatsApp hiba.' }); }
   });

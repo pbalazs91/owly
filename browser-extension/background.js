@@ -5,6 +5,38 @@ chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 const state = async () => ({ ...DEFAULTS, ...await chrome.storage.local.get(Object.keys(DEFAULTS)) });
 const save = (value) => chrome.storage.local.set(value);
 const isAllowed = (settings, id) => !!settings.allowed[id] || !!settings.remoteAllowed[id];
+let historyRunning = false;
+let completedHistory = '';
+async function importHistory(requestId) {
+  if (historyRunning || completedHistory === requestId) return;
+  historyRunning = true;
+  let imported = 0, chats = 0;
+  try {
+    const settings = await state();
+    if (settings.waStatus !== 'connected') throw new Error('Előbb csatlakoztasd a WhatsApp Webet.');
+    const allowed = Object.entries({ ...settings.allowed, ...settings.remoteAllowed }).filter(([id]) => /^\d+@(c\.us|s\.whatsapp\.net|lid)$/.test(id));
+    if (allowed.length > 50) throw new Error('Egyszerre legfeljebb 50 engedélyezett beszélgetés másolható.');
+    for (const [chatId, name] of allowed) {
+      const result = await tabMessage('WA_HISTORY', { chatId });
+      if (!Array.isArray(result.messages)) throw new Error('Töltsd újra a frissített bővítményt és a WhatsAppot.');
+      const messages = result.messages.slice(-50);
+      for (let i = 0; i < messages.length; i++) {
+        const current = await state();
+        if (!isAllowed(current, chatId)) break;
+        // One bounded message keeps even multibyte text below the request limit.
+        const batch = await api('history', { requestId, chatId, name: String(name || chatId).slice(0, 200), messages: [{ ...messages[i], content: messages[i].content.slice(0, 4000) }] });
+        imported += batch.imported || 0;
+      }
+      chats++;
+    }
+    await api('historyResult', { requestId, status: 'done', imported, chats });
+    completedHistory = requestId;
+  } catch (error) {
+    const message = 'Az előzmények másolása megszakadt. Ellenőrizd a WhatsApp kapcsolatát, és próbáld újra.';
+    await save({ error: message });
+    await api('historyResult', { requestId, status: 'error', imported, chats, error: message }).catch(() => {});
+  } finally { historyRunning = false; }
+}
 async function api(action, data = {}) {
   const settings = await state();
   if (!settings.token) throw new Error('Másold be az Owly párosítókódját.');
@@ -32,14 +64,15 @@ async function heartbeat() {
     } catch {}
   }
   const status = Date.now() - settings.lastStatusAt < 65000 ? settings.waStatus : 'disconnected';
-  const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2 });
+  const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2, version: '0.3.0' });
   if (result.alwaysAllowed && typeof result.alwaysAllowed === 'object' && !Array.isArray(result.alwaysAllowed)) {
     await save({ remoteAllowed: Object.fromEntries(Object.entries(result.alwaysAllowed).filter(([id, name]) => /^\d+@c\.us$/.test(id) && typeof name === 'string').slice(0, 50)) });
   }
   if (typeof result.desiredEnabled === 'boolean' && typeof result.controlRevision === 'string' && result.controlRevision !== settings.controlRevision) {
     await save({ enabled: result.desiredEnabled, controlRevision: result.controlRevision });
-    await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2 });
+    await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2, version: '0.3.0' });
   }
+  if (typeof result.historyRequest === 'string') void importHistory(result.historyRequest);
 }
 async function tabMessage(type, data = {}) {
   const settings = await state();
@@ -58,8 +91,8 @@ async function sendDraft(id) {
   // Mark before sending: an uncertain network result must never automatically
   // resend the same reply. The user can check WhatsApp if a send times out.
   await save({ drafts: settings.drafts.filter((item) => item.id !== id) });
-  await tabMessage('WA_SEND', { chatId: draft.chatId, content: draft.content });
-  await api('sent', { messageId: draft.id, content: draft.content });
+  const sent = await tabMessage('WA_SEND', { chatId: draft.chatId, content: draft.content });
+  await api('sent', { messageId: draft.id, content: draft.content, whatsappId: sent.whatsappId });
 }
 async function incoming(message) {
   const settings = await state();

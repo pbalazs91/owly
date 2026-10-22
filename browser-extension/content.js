@@ -22,11 +22,11 @@
   });
   chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (sender.id === chrome.runtime.id && message.type === 'WA_PING') { respond({ contentReady: true, status: pageStatus, lastStatusAt: pageUpdated }); return; }
-    if (sender.id !== chrome.runtime.id || !['WA_ACTIVE', 'WA_SEND', 'WA_SELF', 'WA_TEST'].includes(message.type)) return;
+    if (sender.id !== chrome.runtime.id || !['WA_ACTIVE', 'WA_SEND', 'WA_SELF', 'WA_TEST', 'WA_HISTORY'].includes(message.type)) return;
     const requestId = crypto.randomUUID();
     const timer = setTimeout(() => { pending.delete(requestId); respond({ error: 'A WhatsApp nem válaszolt időben.' }); }, 30000);
     pending.set(requestId, { timer, respond });
-    const actions = { WA_ACTIVE: 'active', WA_SEND: 'send', WA_SELF: 'self', WA_TEST: 'test' };
+    const actions = { WA_ACTIVE: 'active', WA_SEND: 'send', WA_SELF: 'self', WA_TEST: 'test', WA_HISTORY: 'history' };
     window.postMessage({ channel: 'owly-wa-content-v1', requestId, action: actions[message.type], chatId: message.chatId, content: message.content }, location.origin);
     return true;
   });
