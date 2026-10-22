@@ -3,6 +3,7 @@ import { Header } from "@/components/layout/header";
 import { StatCard } from "@/components/ui/stat-card";
 import { OnboardingChecklist } from "@/components/ui/onboarding-checklist";
 import { prisma } from "@/lib/prisma";
+import { ChannelOverview } from "@/components/ui/channel-overview";
 import {
   MessageSquare,
   Ticket,
@@ -173,34 +174,7 @@ export default async function DashboardPage() {
                   Channel Overview
                 </h3>
               </div>
-              <div className="p-5 space-y-4">
-                {[
-                  {
-                    name: "WhatsApp",
-                    icon: MessageCircle,
-                    color: "text-green-600",
-                  },
-                  { name: "Email", icon: Mail, color: "text-blue-600" },
-                  { name: "Phone", icon: Phone, color: "text-purple-600" },
-                ].map((channel) => (
-                  <div
-                    key={channel.name}
-                    className="flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <channel.icon
-                        className={`h-4 w-4 ${channel.color}`}
-                      />
-                      <span className="text-sm font-medium">
-                        {channel.name}
-                      </span>
-                    </div>
-                    <span className="text-xs px-2 py-0.5 rounded-full bg-red-50 text-red-600 font-medium">
-                      Disconnected
-                    </span>
-                  </div>
-                ))}
-              </div>
+              <ChannelOverview />
             </div>
 
             <div className="bg-owly-surface rounded-xl border border-owly-border">
