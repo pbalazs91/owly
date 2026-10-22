@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { fetchList } from "@/lib/fetch-list";
 import {
   Webhook,
   Plus,
@@ -427,9 +428,7 @@ export default function WebhooksPage() {
 
   const fetchWebhooks = useCallback(async () => {
     try {
-      const res = await fetch("/api/webhooks");
-      const data = await res.json();
-      setWebhooks(data);
+      setWebhooks(await fetchList<WebhookData>("/api/webhooks"));
     } catch {
       // silently fail
     } finally {
