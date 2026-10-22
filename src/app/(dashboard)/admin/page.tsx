@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { fetchList } from "@/lib/fetch-list";
 import { cn } from "@/lib/utils";
 import {
   Key,
@@ -145,11 +146,7 @@ export default function AdminPage() {
   const fetchApiKeys = useCallback(async () => {
     setLoadingKeys(true);
     try {
-      const res = await fetch("/api/admin/api-keys");
-      if (res.ok) {
-        const data = await res.json();
-        setApiKeys(data);
-      }
+      setApiKeys(await fetchList<ApiKeyItem>("/api/admin/api-keys"));
     } catch (err) {
       console.error("Failed to fetch API keys:", err);
     } finally {
