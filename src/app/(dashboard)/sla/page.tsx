@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { fetchList } from "@/lib/fetch-list";
 import {
   Timer,
   Plus,
@@ -70,11 +71,7 @@ export default function SLAPage() {
 
   const fetchRules = useCallback(async () => {
     try {
-      const res = await fetch("/api/sla");
-      if (res.ok) {
-        const data = await res.json();
-        setRules(data);
-      }
+      setRules(await fetchList<SLARuleData>("/api/sla"));
     } catch (error) {
       console.error("Failed to fetch SLA rules:", error);
     } finally {
