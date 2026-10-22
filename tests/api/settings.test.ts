@@ -90,6 +90,35 @@ describe("PUT /api/settings", () => {
     expect(response.status).toBe(200);
   });
 
+  it("preserves every stored secret when the masked GET response is saved again", async () => {
+    mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings });
+    const { PUT } = await import("@/app/api/settings/route");
+    const body = Object.fromEntries(SECRET_FIELDS.map((field) => [field, "***"]));
+    const response = await PUT(createRequest("/api/settings", {
+      method: "PUT", body: { ...body, aiModel: "gpt-4o-mini" },
+    }));
+    expect(response.status).toBe(200);
+    const saved = mockPrisma.settings.upsert.mock.calls.at(-1)?.[0];
+    for (const field of SECRET_FIELDS) {
+      expect(saved.update).not.toHaveProperty(field);
+      expect(saved.create).not.toHaveProperty(field);
+    }
+    expect(saved.update.aiModel).toBe("gpt-4o-mini");
+  });
+
+  it("allows an explicitly replaced or cleared API key without leaking it", async () => {
+    const { PUT } = await import("@/app/api/settings/route");
+    for (const value of ["test-replacement-secret", ""]) {
+      mockPrisma.settings.upsert.mockResolvedValue({ ...fixtures.settings, aiApiKey: value });
+      const response = await PUT(createRequest("/api/settings", {
+        method: "PUT", body: { aiApiKey: value },
+      }));
+      expect(response.status).toBe(200);
+      expect(mockPrisma.settings.upsert.mock.calls.at(-1)?.[0].update.aiApiKey).toBe(value);
+      expect((await parseJsonResponse(response)).aiApiKey).toBe(value ? "***" : "");
+    }
+  });
+
   it("should reject invalid tone value", async () => {
     const { PUT } = await import("@/app/api/settings/route");
     const request = createRequest("/api/settings", {
