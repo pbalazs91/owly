@@ -143,7 +143,33 @@ export async function initWhatsApp(): Promise<void> {
   });
 
   whatsappClient = client;
-  await client.initialize();
+  const progress = setInterval(() => {
+    logger.info("[WhatsApp] Startup progress", {
+      browserConnected: client.pupBrowser?.isConnected() ?? false,
+      pageUrl: client.pupPage?.url() ?? "not_created",
+    });
+  }, 15000);
+  let startupTimeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      client.initialize(),
+      new Promise<never>((_, reject) => {
+        startupTimeout = setTimeout(() => reject(new Error("WhatsApp startup timed out after 120 seconds")), 120000);
+      }),
+    ]);
+    logger.info("[WhatsApp] Browser initialization complete");
+  } catch (error) {
+    connectionStatus = "error";
+    statusMessage = "WhatsApp could not start. Please reconnect.";
+    currentQR = null;
+    whatsappClient = null;
+    logger.error("[WhatsApp] Startup failed", error);
+    await client.destroy().catch(() => {});
+    throw error;
+  } finally {
+    clearInterval(progress);
+    if (startupTimeout) clearTimeout(startupTimeout);
+  }
 }
 
 export async function disconnectWhatsApp(): Promise<void> {
