@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 export function BrowserWhatsApp({ controlTarget }: { controlTarget?: HTMLDivElement | null }) {
-  const [connection, setConnection] = useState({ paired: false, online: false, status: "disconnected", enabled: false, requestedEnabled: false, pending: false, supportsControl: false, alwaysAllowed: {} as Record<string, string> });
+  const [connection, setConnection] = useState({ paired: false, online: false, status: "disconnected", enabled: false, requestedEnabled: false, pending: false, supportsControl: false, alwaysAllowed: {} as Record<string, string>, browserVersion: "", history: null as null | { status: string; imported: number; chats: number; error?: string } });
   const [phone, setPhone] = useState("");
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
@@ -79,6 +79,22 @@ export function BrowserWhatsApp({ controlTarget }: { controlTarget?: HTMLDivElem
       <div><p className="font-medium">WhatsApp üzenetfeldolgozás</p><p className="text-xs text-owly-text-light">{connection.pending ? "Várakozás a bővítmény visszajelzésére…" : !connection.online ? "A bővítmény nem érhető el" : !connection.supportsControl ? "Töltsd újra a frissített bővítményt" : connection.enabled ? "Bekapcsolva · a bővítmény visszaigazolta" : "Kikapcsolva · a WhatsApp ettől még csatlakozhat"}</p></div>
     </div>
     <div role="status" className="rounded-lg bg-owly-bg border border-owly-border p-4">{labels[connection.status] || labels.disconnected}</div>
+    <div className="rounded-lg border border-owly-border p-3 space-y-2">
+      <p className="font-medium">Beszélgetések átmásolása az Owlyba</p>
+      <p className="text-xs text-owly-text-light">Minden engedélyezett személyes beszélgetés legutóbbi 50 üzenetéből a szövegek és időpontok másolhatók át. Az ismételt import kihagyja a már átmásolt üzeneteket. Az import nem küld választ; a képeket és csatolmányokat nem másolja.</p>
+      <button type="button" disabled={busy || connection.status !== "connected" || connection.browserVersion !== "0.3.0" || connection.history?.status === "pending"} onClick={async () => {
+        setBusy(true); setError("");
+        try {
+          const response = await fetch("/api/channels/whatsapp/browser", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "requestHistory" }) });
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "Az import nem indítható.");
+          await refresh();
+        } catch (error) { setError(error instanceof Error ? error.message : "Hiba történt."); }
+        finally { setBusy(false); }
+      }} className="rounded-lg bg-owly-primary px-3 py-2 text-white disabled:opacity-50">Engedélyezett beszélgetések átmásolása</button>
+      {connection.browserVersion !== "0.3.0" && <p className="text-xs text-owly-text-light">Az importhoz töltsd újra a 0.3.0-s bővítményt, majd nyisd meg vele a WhatsAppot.</p>}
+      {connection.history && <p role="status" className="text-xs">{connection.history.status === "pending" ? "Várakozás a bővítményre / másolás folyamatban…" : connection.history.status === "done" ? `Kész: ${connection.history.chats} beszélgetés, ${connection.history.imported} új üzenet.` : connection.history.error || "Az import megszakadt. Újra próbálható."}</p>}
+    </div>
     <p>A WhatsApp Web és az Ollama a saját gépeden fut. A QR-kód a Chrome-ban megnyitott WhatsApp-oldalon jelenik meg; itt nem kell szerveres böngészőt indítani.</p>
     <div className="rounded-lg border border-owly-border p-3 space-y-2">
       <p className="font-medium">Mindig engedélyezett telefonszámok</p>
