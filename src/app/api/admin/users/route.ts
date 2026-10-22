@@ -40,7 +40,9 @@ export async function POST(request: NextRequest) {
   const auth = await requireAuth(request, "admin:create");
   if (!isAuthenticated(auth)) return auth;
   return NextResponse.json(
-    { error: "Legfeljebb 1 felhasználó engedélyezett. Új fiók nem hozható létre." },
+    {
+      error: "Az új fiókot a regisztrációs oldalon hozhatod létre. Összesen 2 fiók engedélyezett.",
+    },
     { status: 409 }
   );
 }
