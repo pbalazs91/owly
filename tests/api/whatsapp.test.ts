@@ -13,6 +13,20 @@ vi.mock("@/lib/channels/whatsapp", () => ({
 describe("WhatsApp startup polling", () => {
   beforeEach(() => vi.resetAllMocks());
 
+  it("does not launch a server browser when browser-extension mode is required", async () => {
+    vi.stubEnv("OWLY_WHATSAPP_MODE", "browser");
+    try {
+      const { POST } = await import("@/app/api/channels/whatsapp/route");
+      const response = await POST(createRequest("/api/channels/whatsapp", {
+        method: "POST", body: { action: "connect" },
+      }));
+      expect(response.status).toBe(409);
+      expect(mocks.init).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("returns immediately during startup so the UI can poll for the QR code", async () => {
     let complete!: () => void;
     mocks.init.mockReturnValue(new Promise<void>((resolve) => { complete = resolve; }));
