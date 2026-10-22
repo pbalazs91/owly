@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { fetchList } from "@/lib/fetch-list";
 
 interface CannedResponseData {
   id: string;
@@ -37,6 +38,7 @@ const defaultForm = {
 export default function CannedResponsesPage() {
   const [responses, setResponses] = useState<CannedResponseData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingResponse, setEditingResponse] =
     useState<CannedResponseData | null>(null);
@@ -51,13 +53,11 @@ export default function CannedResponsesPage() {
       const params = new URLSearchParams();
       if (categoryFilter !== "all") params.set("category", categoryFilter);
 
-      const res = await fetch(`/api/canned-responses?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setResponses(data);
-      }
+      setResponses(await fetchList<CannedResponseData>(`/api/canned-responses?${params.toString()}`));
+      setLoadError("");
     } catch (error) {
       console.error("Failed to fetch canned responses:", error);
+      setLoadError(error instanceof Error ? error.message : "A válaszsablonok nem tölthetők be.");
     } finally {
       setLoading(false);
     }
@@ -171,6 +171,7 @@ export default function CannedResponsesPage() {
       />
 
       <div className="flex-1 overflow-auto p-6 space-y-4">
+        {loadError && <p role="alert" className="text-sm text-red-600">{loadError}</p>}
         {/* Filter Bar */}
         <div className="bg-owly-surface rounded-xl border border-owly-border p-3">
           <div className="flex flex-wrap items-center gap-2">
