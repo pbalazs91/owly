@@ -26,6 +26,28 @@ beforeEach(() => {
 });
 
 describe("Restricted WhatsApp browser connection", () => {
+  it("imports historical text with original times and roles without starting AI", async () => {
+    db.channel.findUnique.mockResolvedValue({ config: { browserTokenId: "test-pair", browserHistory: { id: "job", status: "pending" } } });
+    db.message.findFirst.mockResolvedValue(null);
+    const response = await POST(request({ action: "history", requestId: "job", chatId: "123@c.us", name: "Test", messages: [
+      { id: "old-in", content: "Earlier question", fromMe: false, timestamp: 1700000000000 },
+      { id: "old-out", content: "Earlier answer", fromMe: true, timestamp: 1700000001000 },
+    ] }));
+    expect(response.status).toBe(200);
+    expect(await parseJsonResponse(response)).toMatchObject({ imported: 2 });
+    expect(db.message.upsert.mock.calls[0][0].create).toMatchObject({ role: "customer", createdAt: new Date(1700000000000) });
+    expect(db.message.upsert.mock.calls[1][0].create.role).toBe("assistant");
+    expect(db.settings.findUnique).not.toHaveBeenCalled();
+    expect(db.knowledgeEntry.findMany).not.toHaveBeenCalled();
+  });
+  it("skips an already imported message and rejects an unrequested history import", async () => {
+    const body = { action: "history", requestId: "job", chatId: "123@c.us", name: "Test", messages: [{ id: "old", content: "Text", fromMe: false, timestamp: 1700000000000 }] };
+    expect((await POST(request(body))).status).toBe(409);
+    db.channel.findUnique.mockResolvedValue({ config: { browserTokenId: "test-pair", browserHistory: { id: "job", status: "pending" } } });
+    db.message.findUnique.mockResolvedValue({ id: "existing" });
+    expect(await parseJsonResponse(await POST(request(body)))).toMatchObject({ imported: 0 });
+    expect(db.message.upsert).not.toHaveBeenCalled();
+  });
   it("stores explicitly approved phone numbers in private channel settings", async () => {
     const response = await POST(createRequest("/api/channels/whatsapp/browser", { method: "POST", body: { action: "allowPhone", phone: "+1 202 555 0123" } }));
     expect(response.status).toBe(200);
