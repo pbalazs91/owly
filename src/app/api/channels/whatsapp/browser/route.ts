@@ -32,6 +32,7 @@ export async function GET(request: NextRequest) {
     pending: !!config.browserControlRevision && config.browserControlRevision !== config.browserAppliedRevision,
     requestedEnabled: config.browserDesiredEnabled === true,
     alwaysAllowed: config.browserAlwaysAllowed || {},
+    browserVersion: typeof config.browserVersion === "string" ? config.browserVersion : "",
   });
 }
 
@@ -106,6 +107,7 @@ export async function POST(request: NextRequest) {
         config: { ...config, mode: "browser", browserStatus: status.data, browserLastSeen: new Date().toISOString(),
           ...(typeof body.enabled === "boolean" ? { browserEnabled: enabled } : {}),
           ...(body.protocol === 2 ? { browserProtocol: 2 } : {}),
+          ...(typeof body.version === "string" && /^\d+\.\d+\.\d+$/.test(body.version) ? { browserVersion: body.version.slice(0, 32) } : {}),
           ...(pending ? {} : { browserDesiredEnabled: enabled, browserAppliedRevision: typeof body.controlRevision === "string" ? body.controlRevision : "" }),
         },
       } });
