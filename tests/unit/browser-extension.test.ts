@@ -1,0 +1,76 @@
+import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import vm from "node:vm";
+
+function extension(initial = {}) {
+  const stored: Record<string, any> = { ...initial };
+  const send = vi.fn().mockResolvedValue({ sent: true });
+  const fetch = vi.fn().mockImplementation(async (url: string) => ({
+    ok: true, json: async () => url.includes('/api/chat') ? { message: { content: "Helyi válasz" } } : {
+      conversationId: "conv", messageId: "wab-id", aiEnabled: true, maxTokens: 128, temperature: .7,
+      messages: [{ role: "user", content: "Kérdés" }],
+    },
+  }));
+  const chrome = {
+    runtime: { id: "extension-id", getURL: (path: string) => "chrome-extension://extension-id/" + path, onMessage: { addListener: vi.fn() } },
+    storage: { local: { setAccessLevel: vi.fn(), get: async () => structuredClone(stored), set: async (value: object) => Object.assign(stored, structuredClone(value)) } },
+    tabs: { get: async () => ({ id: 1, url: 'https://web.whatsapp.com/' }), sendMessage: send, onRemoved: { addListener: vi.fn() } },
+    alarms: { create: vi.fn(), onAlarm: { addListener: vi.fn() } },
+  };
+  const context = vm.createContext({ chrome, fetch, AbortSignal, Date, console });
+  vm.runInContext(readFileSync('browser-extension/background.js', 'utf8'), context);
+  return { stored, send, fetch, handle: (message: object, sender: object) => context.handle(message, sender), incoming: (message: object) => context.incoming(message), heartbeat: () => context.heartbeat() };
+}
+const popup = { id: "extension-id", url: "chrome-extension://extension-id/popup.html" };
+const wa = { id: "extension-id", tab: { id: 1, url: "https://web.whatsapp.com/" } };
+const incoming = { id: "one", chatId: "123@c.us", content: "Kérdés", name: "Ügyfél" };
+
+describe("Chrome bridge permissions and delivery", () => {
+  it("never exposes the stored pairing token to the popup state response", async () => {
+    const app = extension({ token: "private-token" });
+    const result = await app.handle({ type: "GET_STATE" }, popup);
+    expect(result.token).toBe("saved"); expect(JSON.stringify(result)).not.toContain("private-token");
+  });
+  it("does not let page content change configuration or send drafts", async () => {
+    const app = extension({ primaryTab: 1 });
+    expect(await app.handle({ type: "SAVE", token: "attacker", enabled: true }, wa)).toEqual({ ignored: true });
+    expect(await app.handle({ type: "SEND_DRAFT", id: "x" }, wa)).toEqual({ ignored: true });
+    expect(app.stored.token).toBeUndefined(); expect(app.send).not.toHaveBeenCalled();
+  });
+  it("ignores events from another tab even if WhatsApp is open there", async () => {
+    const app = extension({ primaryTab: 2 });
+    expect(await app.handle({ type: "WA_INCOMING", message: incoming }, wa)).toEqual({ ignored: true });
+    expect(app.fetch).not.toHaveBeenCalled();
+  });
+  it("never imports messages from chats that have not been enabled", async () => {
+    const app = extension({ enabled: true, token: "private-token" });
+    await app.incoming(incoming); expect(app.fetch).not.toHaveBeenCalled();
+  });
+  it("creates a draft with local Ollama without automatically sending it", async () => {
+    const app = extension({ enabled: true, token: "private-token", primaryTab: 1, allowed: { '123@c.us': 'Ügyfél' } });
+    await app.incoming(incoming);
+    expect(app.fetch.mock.calls[1][0]).toBe('http://127.0.0.1:11434/api/chat');
+    expect(app.stored.drafts[0].content).toBe('Helyi válasz');
+    expect(app.send).not.toHaveBeenCalled();
+    await app.incoming(incoming); expect(app.fetch).toHaveBeenCalledTimes(2);
+  });
+  it("sends only on explicit approval and records delivery afterwards", async () => {
+    const app = extension({ enabled: true, token: "private-token", primaryTab: 1, allowed: { '123@c.us': 'Ügyfél' }, drafts: [{ id: "draft1", chatId: "123@c.us", content: "Válasz" }] });
+    await app.handle({ type: "SEND_DRAFT", id: "draft1" }, popup);
+    expect(app.send).toHaveBeenCalledWith(1, { type: "WA_SEND", chatId: "123@c.us", content: "Válasz" });
+    expect(JSON.parse(app.fetch.mock.calls[0][1].body).action).toBe('sent');
+    expect(app.stored.drafts).toEqual([]);
+  });
+  it("does not resend an uncertain delivery or acknowledge it as sent", async () => {
+    const app = extension({ enabled: true, token: "private-token", primaryTab: 1, allowed: { '123@c.us': 'Ügyfél' }, drafts: [{ id: "draft1", chatId: "123@c.us", content: "Válasz" }] });
+    app.send.mockRejectedValue(new Error('timeout'));
+    await expect(app.handle({ type: "SEND_DRAFT", id: "draft1" }, popup)).rejects.toThrow('timeout');
+    expect(app.fetch).not.toHaveBeenCalled();
+    await expect(app.handle({ type: "SEND_DRAFT", id: "draft1" }, popup)).rejects.toThrow();
+    expect(app.send).toHaveBeenCalledOnce();
+  });
+  it("reports stale content-script heartbeats as disconnected", async () => {
+    const app = extension({ token: "private-token", enabled: true, waStatus: 'connected', lastStatusAt: Date.now() - 70000 });
+    await app.heartbeat(); expect(JSON.parse(app.fetch.mock.calls[0][1].body).status).toBe('disconnected');
+  });
+});
