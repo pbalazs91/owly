@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { fetchList } from "@/lib/fetch-list";
 import {
   Ticket,
   Search,
@@ -116,11 +117,7 @@ export default function TicketsPage() {
         params.set("departmentId", departmentFilter);
       if (searchQuery.trim()) params.set("search", searchQuery.trim());
 
-      const res = await fetch(`/api/tickets?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setTickets(data);
-      }
+      setTickets(await fetchList<TicketData>(`/api/tickets?${params.toString()}`));
     } catch (error) {
       console.error("Failed to fetch tickets:", error);
     } finally {
@@ -130,11 +127,7 @@ export default function TicketsPage() {
 
   const fetchDepartments = useCallback(async () => {
     try {
-      const res = await fetch("/api/team/departments");
-      if (res.ok) {
-        const data = await res.json();
-        setDepartments(data);
-      }
+      setDepartments(await fetchList<DepartmentData>("/api/team/departments"));
     } catch (error) {
       console.error("Failed to fetch departments:", error);
     }
