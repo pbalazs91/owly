@@ -26,7 +26,12 @@ export async function GET(request: NextRequest) {
   const channel = await prisma.channel.findUnique({ where: { type: "whatsapp" } });
   const config = (channel?.config || {}) as Record<string, unknown>;
   const online = typeof config.browserLastSeen === "string" && Date.now() - Date.parse(config.browserLastSeen) < 90000;
-  return json({ paired: !!config.browserTokenId, online, status: online ? config.browserStatus : "disconnected" });
+  return json({ paired: !!config.browserTokenId, online, status: online ? config.browserStatus : "disconnected",
+    enabled: online && config.browserEnabled === true,
+    supportsControl: config.browserProtocol === 2,
+    pending: !!config.browserControlRevision && config.browserControlRevision !== config.browserAppliedRevision,
+    requestedEnabled: config.browserDesiredEnabled === true,
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -37,11 +42,20 @@ export async function POST(request: NextRequest) {
     const channel = await prisma.channel.findUnique({ where: { type: "whatsapp" } });
     const config = (channel?.config || {}) as Record<string, unknown>;
 
+    if (body.action === "processing") {
+      const auth = await requireAuth(request, "channels:update");
+      if (!isAuthenticated(auth)) return auth;
+      if (typeof body.enabled !== "boolean" || !config.browserTokenId) return json({ error: "Előbb párosítsd a bővítményt." }, 400);
+      await prisma.channel.update({ where: { type: "whatsapp" }, data: {
+        config: { ...config, browserDesiredEnabled: body.enabled, browserControlRevision: randomUUID() },
+      } });
+      return json({ ok: true });
+    }
     if (body.action === "pair" || body.action === "revoke") {
       const auth = await requireAuth(request, "channels:update");
       if (!isAuthenticated(auth)) return auth;
       const tokenId = body.action === "pair" ? randomUUID() : "";
-      const nextConfig = { ...config, mode: "browser", browserTokenId: tokenId, browserLastSeen: "", browserStatus: "disconnected" };
+      const nextConfig = { ...config, mode: "browser", browserTokenId: tokenId, browserLastSeen: "", browserStatus: "disconnected", browserEnabled: false, browserDesiredEnabled: false, browserControlRevision: "", browserAppliedRevision: "", browserProtocol: 0 };
       await prisma.channel.upsert({
         where: { type: "whatsapp" },
         update: { config: nextConfig, status: "disconnected", isActive: false },
@@ -71,14 +85,23 @@ export async function POST(request: NextRequest) {
     if (body.action === "heartbeat") {
       const status = z.enum(["loading", "qr_ready", "connected", "disconnected"]).safeParse(body.status);
       if (!status.success) return json({ error: "Hibás állapot." }, 400);
+      if (body.enabled !== undefined && typeof body.enabled !== "boolean") return json({ error: "Hibás feldolgozási állapot." }, 400);
+      const acknowledged = typeof body.controlRevision === "string" && body.controlRevision === config.browserControlRevision;
+      const pending = !!config.browserControlRevision && !acknowledged;
+      const enabled = typeof body.enabled === "boolean" ? body.enabled : status.data === "connected";
       await prisma.channel.update({ where: { type: "whatsapp" }, data: {
-        status: status.data === "connected" ? "connected" : "disconnected", isActive: status.data === "connected",
-        config: { ...config, mode: "browser", browserStatus: status.data, browserLastSeen: new Date().toISOString() },
+        status: status.data === "connected" ? "connected" : "disconnected", isActive: status.data === "connected" && enabled,
+        config: { ...config, mode: "browser", browserStatus: status.data, browserLastSeen: new Date().toISOString(),
+          ...(typeof body.enabled === "boolean" ? { browserEnabled: enabled } : {}),
+          ...(body.protocol === 2 ? { browserProtocol: 2 } : {}),
+          ...(pending ? {} : { browserDesiredEnabled: enabled, browserAppliedRevision: typeof body.controlRevision === "string" ? body.controlRevision : "" }),
+        },
       } });
-      return json({ ok: true });
+      return json({ ok: true, ...(pending ? { desiredEnabled: config.browserDesiredEnabled === true, controlRevision: config.browserControlRevision } : {}) });
     }
 
     if (body.action === "incoming") {
+      if (config.browserDesiredEnabled === false) return json({ error: "Az üzenetfeldolgozás szünetel." }, 409);
       const parsed = incomingSchema.safeParse(body);
       if (!parsed.success) return json({ error: "Csak érvényes, személyes szöveges üzenet fogadható." }, 400);
       const input = parsed.data;
