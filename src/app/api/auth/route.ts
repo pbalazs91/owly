@@ -15,31 +15,57 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { action, username, password, name } = body;
 
-  if (action === "setup") {
+  if (action === "setup" || action === "register") {
     const setupDone = await isSetupComplete();
     if (setupDone) {
       return NextResponse.json(
-        { error: "Setup already completed" },
-        { status: 400 }
+        { error: "A regisztráció lezárult: legfeljebb 1 felhasználó engedélyezett." },
+        { status: action === "setup" ? 400 : 409 }
       );
     }
 
-    if (!username || !password) {
+    if (
+      typeof username !== "string" ||
+      typeof password !== "string" ||
+      !/^[\p{L}\p{N}_.-]{3,32}$/u.test(username.trim()) ||
+      password.length < 8 ||
+      Buffer.byteLength(password, "utf8") > 72
+    ) {
       return NextResponse.json(
-        { error: "Username and password are required" },
+        {
+          error:
+            "Adj meg egy 3–32 karakteres felhasználónevet és legalább 8 karakteres jelszót (legfeljebb 72 bájt).",
+        },
         { status: 400 }
       );
     }
 
     const hashed = await hashPassword(password);
-    const admin = await prisma.admin.create({
-      data: {
-        username,
-        password: hashed,
-        name: name || "Admin",
-        role: "admin",
-      },
-    });
+    let admin;
+    try {
+      admin = await prisma.admin.create({
+        data: {
+          username: username.trim(),
+          password: hashed,
+          name: typeof name === "string" && name.trim() ? name.trim() : username.trim(),
+          role: "admin",
+        },
+      });
+    } catch (error) {
+      // The database singleton index also rejects simultaneous registrations.
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "P2002"
+      ) {
+        return NextResponse.json(
+          { error: "A regisztráció lezárult: legfeljebb 1 felhasználó engedélyezett." },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
 
     // Ensure default settings exist
     await prisma.settings.upsert({
@@ -70,26 +96,17 @@ export async function POST(request: NextRequest) {
 
   if (action === "login") {
     if (!username || !password) {
-      return NextResponse.json(
-        { error: "Username and password are required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Username and password are required" }, { status: 400 });
     }
 
     const admin = await prisma.admin.findUnique({ where: { username } });
     if (!admin) {
-      return NextResponse.json(
-        { error: "Invalid credentials" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
     const valid = await verifyPassword(password, admin.password);
     if (!valid) {
-      return NextResponse.json(
-        { error: "Invalid credentials" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Invalid credentials" }, { status: 401 });
     }
 
     const token = generateToken(admin.id, admin.role);
