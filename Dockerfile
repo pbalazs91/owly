@@ -36,16 +36,17 @@ async function main() {
   if (await db.admin.count()) return;
   const password = process.env.OWLY_BOOTSTRAP_PASSWORD;
   if (!password || password.length < 32) throw new Error('A strong OWLY_BOOTSTRAP_PASSWORD is required for first startup');
+  const passwordHash = await bcrypt.hash(password, 12);
   await db.$transaction(async (tx) => {
-    await tx.admin.create({ data: { username: 'balazs', password: await bcrypt.hash(password, 12), name: 'Balazs', role: 'admin' } });
+    await tx.admin.create({ data: { username: 'balazs', password: passwordHash, name: 'Balazs', role: 'admin' } });
     await tx.settings.upsert({ where: { id: 'default' }, update: {}, create: { id: 'default' } });
     for (const type of ['whatsapp', 'email', 'phone']) {
       await tx.channel.upsert({ where: { type }, update: {}, create: { type, isActive: false, status: 'disconnected' } });
     }
-  });
+  }, { timeout: 30000 });
   console.log('Initial administrator created');
 }
-main().catch(() => { console.error('Administrator initialization failed'); process.exitCode = 1; }).finally(() => db.$disconnect());
+main().catch((error) => { console.error('Administrator initialization failed', { code: error?.code, name: error?.name }); process.exitCode = 1; }).finally(() => db.$disconnect());
 BOOTSTRAP
 RUN chown -R nextjs:nodejs /app
 USER nextjs
