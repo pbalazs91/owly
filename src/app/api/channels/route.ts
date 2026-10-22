@@ -19,6 +19,9 @@ export async function GET(request: NextRequest) {
       const existing = channelMap.get(type);
       if (existing) {
         const config = existing.config as Record<string, unknown>;
+        if (type === "whatsapp" && config.mode === "api") {
+          return { ...existing, status: "disconnected", isActive: false };
+        }
         if (config.mode === "browser" && (typeof config.browserLastSeen !== "string" || Date.now() - Date.parse(config.browserLastSeen) > 90000)) {
           return { ...existing, status: "disconnected", isActive: false };
         }
