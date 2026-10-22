@@ -28,6 +28,8 @@ export async function initWhatsApp(): Promise<void> {
   statusMessage = "Initializing WhatsApp client...";
 
   const client = new Client({
+    // Free instances need longer to execute the WhatsApp Web application.
+    authTimeoutMs: 90000,
     authStrategy: new LocalAuth({ dataPath: ".wwebjs_auth" }),
     puppeteer: {
       headless: true,
@@ -154,11 +156,22 @@ export async function initWhatsApp(): Promise<void> {
     await Promise.race([
       client.initialize(),
       new Promise<never>((_, reject) => {
-        startupTimeout = setTimeout(() => reject(new Error("WhatsApp startup timed out after 120 seconds")), 120000);
+        startupTimeout = setTimeout(() => reject(new Error("WhatsApp startup timed out after 180 seconds")), 180000);
       }),
     ]);
     logger.info("[WhatsApp] Browser initialization complete");
   } catch (error) {
+    // Record loading diagnostics, never QR payloads, chats or account details.
+    if (client.pupPage && !client.pupPage.isClosed()) {
+      const diagnostics = await client.pupPage.evaluate(() => ({
+        readyState: document.readyState,
+        hasWhatsAppVersion: typeof (window as unknown as { Debug?: { VERSION?: unknown } }).Debug?.VERSION !== "undefined",
+        scriptCount: document.scripts.length,
+        requiresBrowserUpgrade: /update your browser|browser not supported|unsupported browser/i.test(document.body?.innerText || ""),
+        hasPairingScreen: /scan.*qr|link.*device|log into whatsapp|log in.*whatsapp/i.test(document.body?.innerText || ""),
+      })).catch(() => null);
+      logger.info("[WhatsApp] Startup diagnostics", { diagnostics });
+    }
     connectionStatus = "error";
     statusMessage = "WhatsApp could not start. Please reconnect.";
     currentQR = null;
