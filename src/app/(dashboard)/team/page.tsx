@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { fetchList } from "@/lib/fetch-list";
 import { cn } from "@/lib/utils";
 import {
   Users,
@@ -409,11 +410,7 @@ export default function TeamPage() {
 
   const fetchDepartments = useCallback(async () => {
     try {
-      const res = await fetch("/api/team/departments");
-      if (res.ok) {
-        const data = await res.json();
-        setDepartments(data);
-      }
+      setDepartments(await fetchList<Department>("/api/team/departments"));
     } catch (err) {
       console.error("Failed to load departments:", err);
     }
@@ -424,11 +421,7 @@ export default function TeamPage() {
       const url = filterDept
         ? `/api/team/members?departmentId=${filterDept}`
         : "/api/team/members";
-      const res = await fetch(url);
-      if (res.ok) {
-        const data = await res.json();
-        setMembers(data);
-      }
+      setMembers(await fetchList<Member>(url));
     } catch (err) {
       console.error("Failed to load members:", err);
     }
