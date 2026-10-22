@@ -1,11 +1,13 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function BrowserWhatsApp() {
   const [connection, setConnection] = useState({ paired: false, online: false, status: "disconnected" });
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [copyNotice, setCopyNotice] = useState("");
+  const codeInput = useRef<HTMLInputElement>(null);
   const refresh = useCallback(async () => {
     const response = await fetch("/api/channels/whatsapp/browser", { cache: "no-store" });
     if (!response.ok) throw new Error("A bővítmény állapota nem kérdezhető le.");
@@ -17,7 +19,7 @@ export function BrowserWhatsApp() {
     return () => clearInterval(timer);
   }, [refresh]);
   const change = async (action: "pair" | "revoke") => {
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setCopyNotice("");
     try {
       const response = await fetch("/api/channels/whatsapp/browser", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action }) });
       const data = await response.json();
@@ -25,6 +27,25 @@ export function BrowserWhatsApp() {
       setToken(data.token || ""); await refresh();
     } catch (e) { setError(e instanceof Error ? e.message : "Hiba történt."); }
     finally { setBusy(false); }
+  };
+  const copyCode = async () => {
+    setError(""); setCopyNotice("");
+    codeInput.current?.focus(); codeInput.current?.select();
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(token);
+        setCopyNotice("Párosítókód kimásolva. Illeszd be a bővítménybe.");
+        return;
+      }
+    } catch { /* Some embedded browsers block the Clipboard API. */ }
+    try {
+      codeInput.current?.focus(); codeInput.current?.select();
+      if (document.execCommand("copy")) {
+        setCopyNotice("Párosítókód kimásolva. Illeszd be a bővítménybe.");
+        return;
+      }
+    } catch { /* Keyboard copying remains available. */ }
+    setCopyNotice("A kód kijelölve. Nyomd meg a Ctrl+C billentyűket, majd a bővítményben a Ctrl+V-t.");
   };
   const labels: Record<string, string> = { connected: "WhatsApp csatlakoztatva", qr_ready: "A QR-kód a saját Chrome-odban vár beolvasásra", loading: "A WhatsApp Web töltődik", disconnected: "A bővítmény még nincs csatlakoztatva" };
   return <div className="space-y-4 text-sm">
@@ -43,9 +64,10 @@ export function BrowserWhatsApp() {
     </div>
     {token && <div className="space-y-2">
       <label className="block">Párosítókód – csak a saját Owly-bővítményedbe másold:
-        <input aria-label="Owly párosítókód" readOnly type="password" value={token} className="mt-1 w-full rounded-lg border border-owly-border bg-owly-bg p-2" />
+        <input ref={codeInput} aria-label="Owly párosítókód" readOnly type="text" value={token} autoComplete="off" spellCheck={false} onFocus={(event) => event.currentTarget.select()} onClick={(event) => event.currentTarget.select()} className="mt-1 w-full rounded-lg border border-owly-border bg-owly-bg p-2 font-mono text-xs" />
       </label>
-      <button type="button" onClick={() => navigator.clipboard.writeText(token).catch(() => setError("A kódot kézzel is kijelölheted és másolhatod."))} className="rounded-lg border border-owly-border px-3 py-2">Párosítókód másolása</button>
+      <button type="button" onClick={copyCode} className="rounded-lg border border-owly-border px-3 py-2">Párosítókód másolása</button>
+      {copyNotice && <p role="status" className="text-owly-primary">{copyNotice}</p>}
     </div>}
     {error && <p role="alert" className="text-owly-danger">{error}</p>}
   </div>;
