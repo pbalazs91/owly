@@ -234,8 +234,8 @@ function WhatsAppCard({
             </div>
           </div>
           <div ref={setBrowserControlTarget} className="flex items-center gap-3">
-            {mode !== "browser" && <StatusBadge status={channel.status} />}
-            {mode !== "browser" && <Toggle enabled={isActive} onChange={setIsActive} />}
+            {mode === "api" && <span className="text-xs text-amber-700">Nincs ellenőrzött API-kapcsolat</span>}
+            {mode === "web" && <StatusBadge status={channel.status} />}
           </div>
         </div>
       </div>
@@ -280,6 +280,7 @@ function WhatsAppCard({
               API
             </button>
           </div>
+          <p className="mt-2 text-xs text-owly-text-light">A Szerveres Web ezen az ingyenes kiszolgálón nem érhető el: az 512 MB memória nem elegendő a WhatsApp böngészőjéhez. Használd a Chrome-bővítményt.</p>
         </div>
 
         {mode === "browser" ? <BrowserWhatsApp controlTarget={browserControlTarget} /> : mode === "web" ? (
@@ -364,14 +365,7 @@ function WhatsAppCard({
               onChange={setPhoneNumber}
               placeholder="+1234567890"
             />
-            {isConnected && (
-              <div className="rounded-lg border border-green-200 bg-green-50 p-3 flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <span className="text-sm text-green-700">
-                  API connected - Phone: {phoneNumber || "N/A"}
-                </span>
-              </div>
-            )}
+            <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">A WhatsApp API ebben a változatban nincs bekötve. Az itt mentett adatok nem hoznak létre kapcsolatot; a Chrome-bővítmény kapcsolatát az API mód nem jelzi sajátjaként.</p>
           </div>
         )}
       </div>
