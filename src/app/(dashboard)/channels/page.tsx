@@ -161,6 +161,7 @@ function WhatsAppCard({
   const [phoneNumber, setPhoneNumber] = useState(cfg.phoneNumber || "");
   const [qrCode, setQrCode] = useState<string | null>(null);
   const [connecting, setConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isConnected = channel.status === "connected";
 
@@ -173,6 +174,7 @@ function WhatsAppCard({
 
   const handleConnect = async () => {
     setConnecting(true);
+    setConnectionError("");
     setQrCode(null);
     try {
       const res = await fetch("/api/channels/whatsapp", {
@@ -180,6 +182,7 @@ function WhatsAppCard({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "connect" }),
       });
+      if (!res.ok) throw new Error("A WhatsApp indítása nem sikerült. Próbáld újra.");
       if (res.ok) {
         const data = await res.json();
         if (data.qr) setQrCode(data.qr);
@@ -192,6 +195,12 @@ function WhatsAppCard({
           if (statusRes.ok) {
             const status = await statusRes.json();
             if (status.qr) setQrCode(status.qr);
+              if (status.status === "error" || status.status === "disconnected") {
+                if (pollRef.current) clearInterval(pollRef.current);
+                setConnecting(false);
+                setQrCode(null);
+                setConnectionError("A WhatsApp Web nem tudott elindulni a kiszolgálón. A Connect gombbal újra próbálhatod.");
+              }
             if (status.status === "connected") {
               if (pollRef.current) clearInterval(pollRef.current);
               setConnecting(false);
@@ -200,12 +209,13 @@ function WhatsAppCard({
           }
         } catch { /* ignore polling errors */ }
       }, 3000);
-    } catch {
+    } catch (error) {
       setConnecting(false);
+      setConnectionError(error instanceof Error ? error.message : "A WhatsApp indítása nem sikerült.");
     }
   };
 
-  return (
+    return (
     <div className="bg-owly-surface rounded-xl border border-owly-border overflow-hidden">
       {/* Header */}
       <div className="px-5 py-4 border-b border-owly-border">
@@ -312,8 +322,10 @@ function WhatsAppCard({
                 <p className="text-xs text-owly-text-light text-center max-w-[220px]">
                   {qrCode
                     ? "Scan this QR code with WhatsApp on your phone to connect"
+                    : connecting ? "A WhatsApp Web indul. Ez az ingyenes kiszolgálón néhány percig tarthat."
                     : "Click Connect to generate a QR code"}
                 </p>
+                {connectionError && <p role="alert" className="mt-3 text-sm text-owly-danger text-center">{connectionError}</p>}
                 <button
                   type="button"
                   onClick={handleConnect}
