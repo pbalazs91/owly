@@ -14,18 +14,34 @@ function extension(initial = {}) {
   const chrome = {
     runtime: { id: "extension-id", getURL: (path: string) => "chrome-extension://extension-id/" + path, onMessage: { addListener: vi.fn() } },
     storage: { local: { setAccessLevel: vi.fn(), get: async () => structuredClone(stored), set: async (value: object) => Object.assign(stored, structuredClone(value)) } },
-    tabs: { get: async () => ({ id: 1, url: 'https://web.whatsapp.com/' }), sendMessage: send, onRemoved: { addListener: vi.fn() } },
+    tabs: { get: async () => ({ id: 1, url: 'https://web.whatsapp.com/' }), query: vi.fn().mockResolvedValue([{ id: 1, windowId: 7 }]), update: vi.fn().mockResolvedValue({ id: 1, windowId: 7 }), create: vi.fn().mockResolvedValue({ id: 2, windowId: 8 }), sendMessage: send, onRemoved: { addListener: vi.fn() } },
+    windows: { update: vi.fn().mockResolvedValue({}) },
     alarms: { create: vi.fn(), onAlarm: { addListener: vi.fn() } },
   };
   const context = vm.createContext({ chrome, fetch, AbortSignal, Date, console });
   vm.runInContext(readFileSync('browser-extension/background.js', 'utf8'), context);
-  return { stored, send, fetch, handle: (message: object, sender: object) => context.handle(message, sender), incoming: (message: object) => context.incoming(message), heartbeat: () => context.heartbeat() };
+  return { stored, send, fetch, chrome, handle: (message: object, sender: object) => context.handle(message, sender), incoming: (message: object) => context.incoming(message), heartbeat: () => context.heartbeat() };
 }
 const popup = { id: "extension-id", url: "chrome-extension://extension-id/popup.html" };
 const wa = { id: "extension-id", tab: { id: 1, url: "https://web.whatsapp.com/" } };
 const incoming = { id: "one", chatId: "123@c.us", content: "Kérdés", name: "Ügyfél" };
 
 describe("Chrome bridge permissions and delivery", () => {
+  it("brings an existing WhatsApp window forward and selects its tab", async () => {
+    const app = extension();
+    await app.handle({ type: "OPEN_WA" }, popup);
+    expect(app.chrome.tabs.update).toHaveBeenCalledWith(1, { active: true });
+    expect(app.chrome.windows.update).toHaveBeenCalledWith(7, { focused: true });
+    expect(app.stored.primaryTab).toBe(1);
+  });
+  it("opens and focuses a new WhatsApp tab when none exists", async () => {
+    const app = extension();
+    app.chrome.tabs.query.mockResolvedValue([]);
+    await app.handle({ type: "OPEN_WA" }, popup);
+    expect(app.chrome.tabs.create).toHaveBeenCalledWith({ url: 'https://web.whatsapp.com/', active: true });
+    expect(app.chrome.windows.update).toHaveBeenCalledWith(8, { focused: true });
+    expect(app.stored.primaryTab).toBe(2);
+  });
   it("never exposes the stored pairing token to the popup state response", async () => {
     const app = extension({ token: "private-token" });
     const result = await app.handle({ type: "GET_STATE" }, popup);
