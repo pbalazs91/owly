@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
+import { fetchList } from "@/lib/fetch-list";
 
 interface ConditionData {
   field: string;
@@ -87,6 +88,7 @@ const defaultForm = {
 export default function AutomationPage() {
   const [rules, setRules] = useState<AutomationRuleData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [editingRule, setEditingRule] = useState<AutomationRuleData | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -98,13 +100,11 @@ export default function AutomationPage() {
     try {
       const params = new URLSearchParams();
       if (typeFilter !== "all") params.set("type", typeFilter);
-      const res = await fetch(`/api/automation?${params.toString()}`);
-      if (res.ok) {
-        const data = await res.json();
-        setRules(data);
-      }
+      setRules(await fetchList<AutomationRuleData>(`/api/automation?${params.toString()}`));
+      setLoadError("");
     } catch (error) {
       console.error("Failed to fetch automation rules:", error);
+      setLoadError(error instanceof Error ? error.message : "A szabályok nem tölthetők be.");
     } finally {
       setLoading(false);
     }
@@ -316,6 +316,7 @@ export default function AutomationPage() {
       />
 
       <div className="flex-1 overflow-y-auto p-6">
+        {loadError && <p role="alert" className="mb-4 text-sm text-red-600">{loadError}</p>}
         {/* Filter Tabs */}
         <div className="flex gap-1 mb-6 bg-owly-surface border border-owly-border rounded-lg p-1 w-fit">
           {filterTabs.map((tab) => (
