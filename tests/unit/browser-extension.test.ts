@@ -27,6 +27,21 @@ const wa = { id: "extension-id", tab: { id: 1, url: "https://web.whatsapp.com/" 
 const incoming = { id: "one", chatId: "123@c.us", content: "Kérdés", name: "Ügyfél" };
 
 describe("Chrome bridge permissions and delivery", () => {
+  it("continues history import when one approved chat cannot be read", async () => {
+    const app = extension({ token: "private-token", primaryTab: 1, waStatus: "connected", allowed: { '123@c.us': 'Unavailable', '456@c.us': 'Available' } });
+    app.send.mockRejectedValueOnce(new Error('Chat unavailable')).mockResolvedValue({ messages: [] });
+    await app.importHistory('job');
+    expect(JSON.parse(app.fetch.mock.calls.at(-1)![1].body)).toMatchObject({ action: 'historyResult', status: 'done', chats: 1, skipped: 1, imported: 0 });
+  });
+  it("reports the source error when no approved chat can be read", async () => {
+    const app = extension({ token: "private-token", primaryTab: 1, waStatus: "connected", allowed: { '123@c.us': 'Unavailable' } });
+    app.send.mockRejectedValue(new Error('Chat unavailable'));
+    await app.importHistory('job');
+    const result = JSON.parse(app.fetch.mock.calls.at(-1)![1].body);
+    expect(result.status).toBe('error');
+    expect(result.error).toContain('Chat unavailable');
+    expect(result.chats).toBe(0);
+  });
   it("imports qualified RocketSender replies without AI or automatic sending", async () => {
     const app = extension({ token: "private-token", enabled: true, autoReply: true, rocket: { enabled: true, accountId: "+12025550100" } });
     app.fetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => url.endsWith('/check') ? { eligible: true } : { eventId: 'stored' } }));
