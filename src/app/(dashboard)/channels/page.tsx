@@ -253,6 +253,8 @@ function WhatsAppCard({
             <button
               type="button"
               onClick={() => setMode("web")}
+              disabled
+              title="Az ingyenes példányon a Chrome-bővítmény mód használható."
               className={cn(
                 "flex-1 flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border transition-colors",
                 mode === "web"
