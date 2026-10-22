@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { maskSettingsSecrets } from "@/lib/security";
+import { maskSettingsSecrets, SECRET_FIELDS } from "@/lib/security";
 import { updateSettingsSchema, validateBody } from "@/lib/validations";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
@@ -41,6 +41,11 @@ export async function PUT(request: NextRequest) {
     delete body.id;
     delete body.createdAt;
     delete body.updatedAt;
+
+    // A masked value returned by GET means keep the existing secret.
+    for (const field of SECRET_FIELDS) {
+      if (body[field] === "***") delete body[field];
+    }
 
     const validation = validateBody(updateSettingsSchema, body);
     if (!validation.success) {
