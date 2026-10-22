@@ -36,7 +36,11 @@
       if (chatId.endsWith('@lid') && window.WPP.contact?.getPnLidEntry) {
         try { const entry = await window.WPP.contact.getPnLidEntry(chatId); chatId = normalize(entry.phoneNumber) || chatId; } catch {}
       }
-      post('incoming', { message: { id, chatId, content: msg.body.slice(0, 6000), name: String(msg.notifyName || 'WhatsApp ügyfél').slice(0, 200) } });
+      let accountId = ownChat();
+      if (accountId.endsWith('@lid') && window.WPP.contact?.getPnLidEntry) {
+        try { const entry = await window.WPP.contact.getPnLidEntry(accountId); accountId = normalize(entry.phoneNumber) || accountId; } catch {}
+      }
+      post('incoming', { message: { id, chatId, accountId, timestamp: Math.round(timestamp * 1000), fromMe, content: msg.body.slice(0, 6000), name: String(msg.notifyName || 'WhatsApp ügyfél').slice(0, 200) } });
     });
   }
   window.addEventListener('message', async (event) => {

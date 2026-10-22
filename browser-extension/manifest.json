@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Owly – WhatsApp és helyi AI",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "WhatsApp Web összekapcsolása az Owlyval és a saját gépen futó Ollamával.",
   "minimum_chrome_version": "120",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA6rKaZCF0xzzCds3NmnvupjV3MWcZOv66ckSZoGdunpoLt3AjI6q+o6JUld+7kFBcV+JTEiQyjU+1UZWUopVKaBUJABA0wV9ixObrnyNA1f34tYGBiG1gVJXVeJ4Yr2IHjefX3ksmlEunxxHW2lwktoIhvosK/7wYVmtcloEgTbB7P/9uQN/W57hm3rpzQDZOfOQUWg7Kc3YQAl/jzmzXER+HEIzgGkl5OQ50hJQgjxz4pptThWR9Q7uWeDMVqoRMkhQ+AjJ1xzskw29hVQMQPiwPo3ysohThucG1+n7tHRpxM3QOdUNG+MHT5CyWxbjLUxNga7yYC19HmQU+er269wIDAQAB",
