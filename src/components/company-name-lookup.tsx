@@ -18,7 +18,7 @@ export function CompanyNameLookup({ customerId, onAccepted }: { customerId: stri
   }
   return <div className="space-y-2 text-sm">
     <p className="font-medium">Nyilvános céges névjavaslat</p>
-    <p className="text-xs text-owly-text-light">A gomb a telefonszámot a Wikidata nyilvános céges adatbázisában keresi. Csak pontos számegyezésből készül javaslat, forrással; a cégnév a jóváhagyásod után kerül a külön cégnév mezőbe. Magánszemélyekre nem keresünk.</p>
+    <p className="text-xs text-owly-text-light">A gomb a telefonszámot a Wikidata nyilvános céges adatbázisában keresi. Csak pontos számegyezésből készül javaslat, forrással; a meglévő nevet a jóváhagyásod után írjuk át. Magánszemélyekre nem keresünk.</p>
     <button disabled={busy} type="button" className="rounded-lg border border-owly-border px-3 py-2 disabled:opacity-50" onClick={() => action({ action: "lookup" })}>{busy ? "Folyamatban…" : "Céges név keresése"}</button>
     {candidates.map(candidate => <div key={candidate.sourceUrl} className="rounded-lg border border-owly-border p-3"><p>{candidate.name}</p><a className="underline mr-3" target="_blank" rel="noopener noreferrer" href={candidate.sourceUrl}>Nyilvános forrás</a><button disabled={busy} className="underline" onClick={() => action({ action: "accept", token: candidate.token })}>Név jóváhagyása és mentése</button></div>)}
     {notice && <p role="status">{notice}</p>}

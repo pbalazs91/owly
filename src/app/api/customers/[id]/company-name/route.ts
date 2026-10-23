@@ -20,7 +20,7 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
       const candidate = typeof body.token === "string" ? verifyCandidate(body.token, id, phone) : null;
       if (!candidate) return NextResponse.json({ error: "A javaslat lejárt, vagy az ügyfél telefonszáma megváltozott. Keress újra." }, { status: 409 });
       const metadata = customer.metadata && typeof customer.metadata === "object" && !Array.isArray(customer.metadata) ? customer.metadata : {};
-      await prisma.customer.update({ where: { id }, data: { companyName: candidate.name, metadata: { ...metadata, companyNameEvidence: { ...candidate, confirmedBy: auth.userId, confirmedAt: new Date().toISOString() } } } });
+      await prisma.customer.update({ where: { id }, data: { name: candidate.name, metadata: { ...metadata, companyNameEvidence: { ...candidate, confirmedBy: auth.userId, confirmedAt: new Date().toISOString() } } } });
       return NextResponse.json({ ok: true });
     }
     if (body.action !== "lookup") return NextResponse.json({ error: "Ismeretlen művelet." }, { status: 400 });

@@ -5,9 +5,9 @@ afterEach(() => vi.unstubAllGlobals());
 describe("Public company evidence", () => {
   it("accepts only exact public-company telephone matches with a usable source", async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ results: { bindings: [
-      { digits: { value: "12025550123" }, company: { value: "http://www.wikidata.org/entity/Q123" }, companyLabel: { value: "Example Company" }, tel: { value: "+1-202-555-0123" } },
-      { digits: { value: "12025550123" }, company: { value: "http://www.wikidata.org/entity/Q124" }, companyLabel: { value: "Wrong number" }, tel: { value: "+1-202-555-0124" } },
-      { digits: { value: "12025550123" }, company: { value: "https://untrusted.example/Q125" }, companyLabel: { value: "Wrong source" }, tel: { value: "+1-202-555-0123" } },
+      { company: { value: "http://www.wikidata.org/entity/Q123" }, companyLabel: { value: "Example Company" }, tel: { value: "+1-202-555-0123" } },
+      { company: { value: "http://www.wikidata.org/entity/Q124" }, companyLabel: { value: "Wrong number" }, tel: { value: "+1-202-555-0124" } },
+      { company: { value: "https://untrusted.example/Q125" }, companyLabel: { value: "Wrong source" }, tel: { value: "+1-202-555-0123" } },
     ] } })));
     vi.stubGlobal("fetch", fetch);
     expect(await lookupPublicCompany("+12025550123")).toEqual([{ name: "Example Company", phone: "+12025550123", sourceUrl: "https://www.wikidata.org/wiki/Q123", provider: "wikidata" }]);

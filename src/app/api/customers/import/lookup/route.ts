@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
-import { candidateToken, lookupPublicCompanies } from "@/lib/company-name";
+import { candidateToken, lookupPublicCompany } from "@/lib/company-name";
 import { readBoundedJson } from "@/lib/read-json";
 
 export async function POST(request: NextRequest) {
@@ -23,7 +23,10 @@ export async function POST(request: NextRequest) {
       const digits = value.replace(/@(c\.us|s\.whatsapp\.net)$/, "").replace(/\D/g, "");
       return /^[1-9]\d{7,14}$/.test(digits) ? [[customer.id, "+" + digits] as const] : [];
     }));
-    const matchesByPhone = await lookupPublicCompanies([...phoneByCustomer.values()]);
+    const matchesByPhone = new Map<string, Awaited<ReturnType<typeof lookupPublicCompany>>>();
+    await Promise.all([...new Set(phoneByCustomer.values())].map(async phone => {
+      matchesByPhone.set(phone, await lookupPublicCompany(phone));
+    }));
     const matches = imported.flatMap(customer => {
       const phone = phoneByCustomer.get(customer.id);
       if (!phone) return [];

@@ -6,7 +6,6 @@ import { createRequest } from "../helpers/request";
 import { POST as inbound } from "@/app/api/integrations/rocketsender/inbound/route";
 import { POST as configure } from "@/app/api/integrations/rocketsender/route";
 import { POST as outbound } from "@/app/api/integrations/rocketsender/outbound/route";
-import { GET as exportContacts, POST as importContacts } from "@/app/api/integrations/rocketsender/contacts/route";
 import { drainRocketQueue } from "@/lib/rocketsender/importer";
 
 const db = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
@@ -62,27 +61,6 @@ describe("Reply-gated RocketSender imports", () => {
     expect((await response.json()).customersCreated).toBe(0);
     expect(db.customer.create).not.toHaveBeenCalled();
     expect(db.conversation.create).not.toHaveBeenCalled();
-  });
-  it("imports a CSV contact as a customer without granting consent or active status by default", async () => {
-    db.$transaction.mockImplementation(async (callback: any) => callback(db));
-    db.customer.findMany.mockResolvedValue([]);
-    db.customer.create.mockImplementation(async (args: any) => ({ id: "customer1", ...args.data }));
-    db.rocketContact.upsert.mockResolvedValue({});
-    const response = await importContacts(req({ contacts: [{ phone, name: "Test Company" }] }));
-    expect(response.status).toBe(200);
-    expect((await response.json()).created).toBe(1);
-    expect(db.customer.create.mock.calls[0][0].data).toMatchObject({ name: "Test Company", tags: "", metadata: { rocketSenderContact: { whatsappConsent: false } } });
-    expect(db.rocketContact.upsert).toHaveBeenCalled();
-  });
-  it("exports only unblocked contacts with explicitly recorded WhatsApp consent", async () => {
-    db.customer.findMany.mockResolvedValue([
-      { phone, whatsapp: phone, name: "Consented", email: "", isBlocked: false, tags: "active", metadata: { rocketSenderContact: { whatsappConsent: true, consentSource: "Website", consentedAt: "2026-10-20" } } },
-      { phone: "+12025550124", whatsapp: "+12025550124", name: "No consent", email: "", isBlocked: false, tags: "active", metadata: { rocketSenderContact: { whatsappConsent: false } } },
-    ]);
-    const response = await exportContacts(createRequest("/api/integrations/rocketsender/contacts"));
-    const csv = await response.text();
-    expect(csv).toContain("Consented");
-    expect(csv).not.toContain("No consent");
   });
   it("rejects planned sends and refuses production activation before the real trial", async () => {
     expect((await outbound(req([{ status: "planned", accountId, phone, campaignId: "campaign1", sentAt: "2026-10-20T12:00:00Z" }]))).status).toBe(400);

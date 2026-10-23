@@ -7,11 +7,6 @@ import type { Prisma } from "@/generated/prisma/client";
 // identifiers from events, or imply that its existing customer API is multi-tenant.
 export const organizationId = "default";
 export const key = (...parts: string[]) => "rocket-" + createHash("sha256").update(JSON.stringify(parts)).digest("hex");
-export function ensureCustomerTag(value: string, target: string) {
-  const tags = value.split(",").map(tag => tag.trim()).filter(Boolean);
-  if (!tags.some(tag => tag.toLowerCase() === target.toLowerCase())) tags.push(target);
-  return tags.join(", ");
-}
 export function normalizeRocketPhone(value: string) {
   const phone = value.replace(/@(c\.us|s\.whatsapp\.net)$/, "").replace(/[+\s().-]/g, "");
   if (!/^[1-9]\d{7,14}$/.test(phone)) throw new Error("INVALID_INTERNATIONAL_PHONE");
@@ -109,7 +104,6 @@ async function processReply(id: string) {
         if (customer.isBlocked) throw new ImportFailure("CUSTOMER_BLOCKED");
         const metadata = customer.metadata && typeof customer.metadata === "object" && !Array.isArray(customer.metadata) ? customer.metadata : {};
         await tx.customer.update({ where: { id: customer.id }, data: {
-          tags: ensureCustomerTag(customer.tags, "active"),
           lastContact: new Date(Math.max(customer.lastContact.getTime(), Date.parse(input.occurredAt))),
           ...((!customer.name || customer.name === "Unknown" || customer.name === input.phone) && input.name ? { name: input.name } : {}),
           metadata: { ...metadata, rocketSender: { source: "rocketsender", accountId: input.accountId, campaignId: outbound.campaignId } },

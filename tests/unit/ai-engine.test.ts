@@ -3,9 +3,11 @@ import { prisma } from "@/lib/prisma";
 
 // Mock OpenAI
 const mockOpenAICreateFn = vi.fn();
+let mockOpenAIConfig: Record<string, unknown> | undefined;
 vi.mock("openai", () => {
   return {
     default: class MockOpenAI {
+      constructor(config: Record<string, unknown>) { mockOpenAIConfig = config; }
       chat = {
         completions: {
           create: mockOpenAICreateFn,
@@ -21,6 +23,7 @@ describe("AI Engine", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     mockOpenAICreateFn.mockReset();
+    mockOpenAIConfig = undefined;
 
     // Default settings
     mockPrisma.settings.findFirst.mockResolvedValue({
@@ -113,6 +116,22 @@ describe("AI Engine", () => {
         temperature: 0.7,
       })
     );
+  });
+
+  it("should use the local Ollama OpenAI-compatible endpoint without an API key", async () => {
+    mockPrisma.settings.findFirst.mockResolvedValue({
+      id: "default", aiProvider: "ollama", aiModel: "llama3.2:3b", aiApiKey: "",
+      maxTokens: 1000, temperature: 0.7, businessName: "Test", businessDesc: "",
+      welcomeMessage: "", tone: "friendly", language: "auto",
+    });
+    mockOpenAICreateFn.mockResolvedValue({ choices: [{ finish_reason: "stop", message: { content: "Ollama reply" } }] });
+
+    const { chat } = await import("@/lib/ai/engine");
+    const response = await chat("conv-1", "Hello");
+
+    expect(response).toBe("Ollama reply");
+    expect(mockOpenAIConfig).toEqual({ apiKey: "ollama", baseURL: "http://127.0.0.1:11434/v1" });
+    expect(mockOpenAICreateFn).toHaveBeenCalledWith(expect.objectContaining({ model: "llama3.2:3b" }));
   });
 
   it("should save user and assistant messages", async () => {

@@ -106,7 +106,7 @@ export async function chat(
 ): Promise<string> {
   const config = await getAIConfig();
 
-  if (!config.apiKey) {
+  if (!config.apiKey && config.provider !== "ollama") {
     return "AI is not configured. Please add your API key in Settings > AI Configuration.";
   }
 
@@ -216,7 +216,13 @@ async function callAI(
     return "I apologize, but I'm having trouble processing your request. Let me connect you with a team member.";
   }
 
-  const openai = new OpenAI({ apiKey: config.apiKey });
+  const ollamaBase = (process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/+$/, "");
+  const openai = new OpenAI({
+    apiKey: config.provider === "ollama" ? "ollama" : config.apiKey,
+    ...(config.provider === "ollama" && {
+      baseURL: ollamaBase.endsWith("/v1") ? ollamaBase : `${ollamaBase}/v1`,
+    }),
+  });
 
   let response;
   try {
