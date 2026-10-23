@@ -2,7 +2,7 @@ export type CustomerImportRow = { name: string; companyName: string; businessTyp
 export type CustomerImportField = "name" | "companyName" | "businessType" | "companyAddress" | "website" | "email" | "phone" | "whatsapp" | "tags";
 export type CustomerImportMapping = Partial<Record<CustomerImportField, string>>;
 export const MAX_CUSTOMER_IMPORT_BYTES = 25 * 1024 * 1024;
-const MAX_IMPORT_CONTACTS = 15_000;
+const MAX_IMPORT_CONTACTS = 20_000;
 
 function detectDelimiter(text: string): string {
   const input = text.replace(/^\uFEFF/, "");
@@ -60,7 +60,7 @@ export function getCustomerImportCsvHeaders(text: string): string[] {
   const normalized = headers.map(header => header.toLowerCase());
   if (normalized.some(header => !header)) throw new Error("A CSV fejlécében üres oszlopnév van.");
   if (normalized.length !== new Set(normalized).size) throw new Error("A CSV-ben ismétlődő oszlopnév van.");
-  if (rows.length > MAX_IMPORT_CONTACTS) throw new Error("Egyszerre legfeljebb 15 000 kontakt importálható.");
+  if (rows.length > MAX_IMPORT_CONTACTS) throw new Error("Egyszerre legfeljebb 20 000 kontakt importálható.");
   return headers;
 }
 
@@ -96,7 +96,7 @@ export function parseCustomerImportCsv(text: string, mapping?: CustomerImportMap
     const companyName = (sourceColumn("companyName", valuesByHeader)).slice(0, 200);
     const name = sourceColumn("name", valuesByHeader) || companyName;
     parsed.push({ name: name.slice(0, 200), companyName, businessType: sourceColumn("businessType", valuesByHeader).slice(0, 200), companyAddress: sourceColumn("companyAddress", valuesByHeader).slice(0, 500), website, email, phone, whatsapp, company: companyName, tags: tags.slice(0, 1000) });
-    if (parsed.length > MAX_IMPORT_CONTACTS) throw new Error("Egyszerre legfeljebb 15 000 kontakt importálható.");
+    if (parsed.length > MAX_IMPORT_CONTACTS) throw new Error("Egyszerre legfeljebb 20 000 kontakt importálható.");
   }
   if (!parsed.length) throw new Error("A CSV nem tartalmaz kontaktot.");
   return parsed;

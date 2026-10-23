@@ -30,14 +30,14 @@ describe("Owly customer CSV import", () => {
     expect(() => parseCustomerImportCsv("name,email\nAcme,")).toThrow(/Minden kontakt sorában/);
     expect(() => parseCustomerImportCsv("phone\n06301234567")).toThrow(/országkódos/i);
   });
-  it("supports large files beyond one API batch and caps imports at 15,000 contacts", () => {
+  it("supports large files beyond one API batch and caps imports at 20,000 contacts", () => {
     expect(MAX_CUSTOMER_IMPORT_BYTES).toBe(25 * 1024 * 1024);
     const rows = Array.from({ length: 251 }, (_, index) => `Contact ${index},+3630${String(index).padStart(7, "0")}`);
     const csv = `name,phone\n${rows.join("\n")}`;
     expect(parseCustomerImportCsv(csv)).toHaveLength(251);
 
-    const tooManyRows = Array.from({ length: 15_001 }, (_, index) => `Contact ${index},+3630${String(index).padStart(7, "0")}`);
-    expect(() => getCustomerImportCsvHeaders(`name,phone\n${tooManyRows.join("\n")}`)).toThrow(/15 000/);
+    const tooManyRows = Array.from({ length: 20_001 }, (_, index) => `Contact ${index},+3630${String(index).padStart(7, "0")}`);
+    expect(() => getCustomerImportCsvHeaders(`name,phone\n${tooManyRows.join("\n")}`)).toThrow(/20 000/);
   });
   it("accepts a CSV larger than 10 MB", () => {
     const csv = `name,phone\n${"A".repeat(10 * 1024 * 1024)},+36301234567`;

@@ -1209,7 +1209,7 @@ export default function CustomersPage() {
       {/* Add Customer Modal */}
       <Modal open={showImportModal} onClose={() => !importing && setShowImportModal(false)} title="Import customers" size="lg" className="max-h-[90vh] overflow-y-auto">
         <div className="space-y-4">
-          <p className="text-sm text-owly-text-light">Upload a CSV or Excel (.xlsx) contact list. You can map any source column to Owly fields. Up to 15,000 contacts can be imported in safe batches.</p>
+          <p className="text-sm text-owly-text-light">Upload a CSV or Excel (.xlsx) contact list. You can map any source column to Owly fields. Up to 20,000 contacts can be imported in safe batches.</p>
           <div className="flex flex-wrap items-center gap-3">
             <input
               ref={customerImportFileInput}
@@ -1243,7 +1243,7 @@ export default function CustomersPage() {
                 {importHeaders.map((header, index) => <option key={`${header}-${index}`} value={header}>{header}</option>)}
               </select>
             </label>)}
-            <p className="text-xs text-owly-text-light">15,000 contact maximum · 25 MB CSV or Excel maximum · Existing contacts are matched and updated.</p>
+            <p className="text-xs text-owly-text-light">20,000 contact maximum · 25 MB CSV or Excel maximum · Existing contacts are matched and updated.</p>
             <button type="button" onClick={() => void handleImportCustomers()} disabled={importing} className="rounded-lg bg-owly-primary px-3 py-2 text-sm font-medium text-white hover:bg-owly-primary-dark disabled:opacity-50">{importing ? "Importing…" : "Import mapped contacts"}</button>
           </div>}
           {importing && <p role="status" className="text-sm text-owly-text-light">{importMessage || "Importing contacts…"}</p>}

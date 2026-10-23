@@ -98,6 +98,6 @@ export async function readXlsxAsCsv(file: File) {
     }
     return values;
   }).filter(row => row.some(value => value?.trim()));
-  if (rows.length > 15_001) throw new Error("Up to 15,000 contacts can be imported at a time.");
+  if (rows.length > 20_001) throw new Error("Up to 20,000 contacts can be imported at a time.");
   return rows.map(row => row.map(csvCell).join(",")).join("\r\n");
 }
