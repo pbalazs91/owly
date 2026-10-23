@@ -27,7 +27,7 @@ import {
   Building2,
   MapPin,
 } from "lucide-react";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { cn, formatDate, getStatusColor, getChannelLabel } from "@/lib/utils";
 import { getCustomerImportCsvHeaders, MAX_CUSTOMER_IMPORT_BYTES, parseCustomerImportCsv, type CustomerImportField, type CustomerImportMapping } from "@/lib/customer-import";
 
@@ -130,6 +130,7 @@ export default function CustomersPage() {
   });
   const [loading, setLoading] = useState(true);
   const [showImportModal, setShowImportModal] = useState(false);
+  const customerImportFileInput = useRef<HTMLInputElement>(null);
   const [importing, setImporting] = useState(false);
   const [importMessage, setImportMessage] = useState("");
   const [importError, setImportError] = useState("");
@@ -1201,10 +1202,23 @@ export default function CustomersPage() {
         <div className="space-y-4">
           <p className="text-sm text-owly-text-light">Upload a CSV contact list. You can map any source column to Owly fields. Up to 15,000 contacts can be imported in safe batches.</p>
           <div className="flex flex-wrap items-center gap-3">
-            <label className={cn("inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-owly-border text-sm font-medium cursor-pointer hover:bg-owly-primary-50", importing && "opacity-50 pointer-events-none")}>
+            <input
+              ref={customerImportFileInput}
+              className="hidden"
+              type="file"
+              accept=".csv,text/csv,application/vnd.ms-excel"
+              aria-label="Choose customer CSV file"
+              disabled={importing}
+              onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void handleSelectImportFile(file); }}
+            />
+            <button
+              type="button"
+              disabled={importing}
+              onClick={() => customerImportFileInput.current?.click()}
+              className="inline-flex items-center gap-2 rounded-lg border border-owly-border px-3 py-2 text-sm font-medium hover:bg-owly-primary-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
               <Upload className="h-4 w-4" />{importing ? "Importing…" : "Choose CSV file"}
-              <input className="sr-only" type="file" accept=".csv,text/csv" disabled={importing} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void handleSelectImportFile(file); }} />
-            </label>
+            </button>
             <a href="/owly-customer-import-template.csv" download className="text-sm underline text-owly-text-light">Download CSV template</a>
           </div>
           {importCsvName && !importCsvText && <p className="text-sm text-owly-text-light">Reading {importCsvName}…</p>}
