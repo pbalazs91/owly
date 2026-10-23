@@ -43,8 +43,8 @@ describe("Chrome bridge permissions and delivery", () => {
     expect(result.error).toContain('Chat unavailable');
     expect(result.chats).toBe(0);
   });
-  it("imports qualified RocketSender replies without AI or automatic sending", async () => {
-    const app = extension({ token: "private-token", enabled: true, autoReply: true, rocket: { enabled: true, accountId: "+12025550100" } });
+  it("imports qualified RocketSender replies even when AI processing is off, without generating or sending a reply", async () => {
+    const app = extension({ token: "private-token", enabled: false, autoReply: true, rocket: { enabled: true, accountId: "+12025550100" } });
     app.fetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => url.endsWith('/check') ? { eligible: true } : { eventId: 'stored' } }));
     await app.incoming({ ...incoming, chatId: '12025550123@c.us', accountId: '12025550100@c.us', timestamp: Date.now(), fromMe: false });
     expect(app.fetch.mock.calls.map(([url]) => url)).toEqual(['https://owlyapp.onrender.com/api/integrations/rocketsender/check', 'https://owlyapp.onrender.com/api/integrations/rocketsender/inbound']);

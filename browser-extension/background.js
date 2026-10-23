@@ -73,7 +73,7 @@ async function heartbeat() {
   }
   const status = Date.now() - settings.lastStatusAt < 65000 ? settings.waStatus : 'disconnected';
   await save({ lastHeartbeatAt: Date.now() });
-  const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2, version: '0.5.3', uncertainMessageIds: settings.uncertainMessageIds });
+  const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2, version: '0.5.4', uncertainMessageIds: settings.uncertainMessageIds });
   if (result.rocket && typeof result.rocket.enabled === 'boolean') {
     await save({ rocket: { enabled: result.rocket.enabled, accountId: String(result.rocket.accountId || '') } });
   }
@@ -82,7 +82,7 @@ async function heartbeat() {
   }
   if (typeof result.desiredEnabled === 'boolean' && typeof result.controlRevision === 'string' && result.controlRevision !== settings.controlRevision) {
     await save({ enabled: result.desiredEnabled, controlRevision: result.controlRevision });
-    await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2, version: '0.5.3', uncertainMessageIds: settings.uncertainMessageIds });
+    await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2, version: '0.5.4', uncertainMessageIds: settings.uncertainMessageIds });
   }
   if (typeof result.historyRequest === 'string') void importHistory(result.historyRequest);
   if (result.rocket?.enabled && !rocketRetrying) {
@@ -165,7 +165,9 @@ async function rocketApi(path, body) {
 }
 async function rocketIncoming(message) {
   const settings = await state();
-  if (!settings.token || !settings.rocket.enabled || !settings.enabled || !message || message.fromMe) return;
+  // Reply import is a separate RocketSender feature. It must keep working when
+  // Owly's AI-processing switch is off; importing never generates or sends a reply.
+  if (!settings.token || !settings.rocket.enabled || !message || message.fromMe) return;
   if (!/^\d+@c\.us$/.test(message.chatId) || !/^\d+@c\.us$/.test(message.accountId) || typeof message.id !== 'string' || message.id.length > 250 || typeof message.content !== 'string' || message.content.length > 6000 || !Number.isFinite(message.timestamp)) return;
   const accountId = '+' + message.accountId.split('@')[0];
   if (accountId !== settings.rocket.accountId) return;
@@ -261,7 +263,6 @@ async function handle(message, sender) {
     return { queued: true };
   }
   if (message.type === 'TEST_OLLAMA') {
-    const settings = await state();
     const response = await fetch(OLLAMA + '/api/tags', { signal: AbortSignal.timeout(10000) });
     if (!response.ok) throw new Error('Az Ollama nem engedélyezi ezt a bővítményt.');
     const data = await response.json();

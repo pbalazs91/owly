@@ -13,8 +13,8 @@ async function render(initial = false) {
   if (initial) {
     $('token').placeholder = state.token ? 'Párosítókód elmentve; csak cseréhez írj újat' : 'Másold ide az Owly párosítókódját';
     $('enabled').checked = state.enabled; $('auto').checked = state.autoReply;
-    $('notice').textContent = state.error;
   }
+  if (state.error) $('notice').textContent = state.error;
   $('allowed').replaceChildren();
   const allowed = { ...state.allowed, ...state.remoteAllowed };
   for (const [chatId, name] of Object.entries(allowed)) {

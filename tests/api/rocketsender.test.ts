@@ -84,9 +84,10 @@ describe("Reply-gated RocketSender imports", () => {
     await drainRocketQueue();
     expect(db.rocketImportEvent.update.mock.calls[0][0].data).toMatchObject({ status: "dead", attempts: 5, lockedAt: null, lastErrorCode: "DATABASE_OR_PROCESSING_ERROR" });
   });
-  it("pauses durable queue processing with the main WhatsApp switch", async () => {
+  it("continues importing already received replies with the AI-processing switch off", async () => {
     db.channel.findUnique.mockResolvedValue({ config: { browserDesiredEnabled: false } });
+    db.rocketImportEvent.findMany.mockResolvedValue([]);
     await drainRocketQueue();
-    expect(db.rocketImportEvent.findMany).not.toHaveBeenCalled();
+    expect(db.rocketImportEvent.findMany).toHaveBeenCalled();
   });
 });

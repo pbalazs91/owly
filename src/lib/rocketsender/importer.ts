@@ -143,9 +143,9 @@ async function processReply(id: string) {
 export async function drainRocketQueue() {
   const settings = await prisma.rocketIntegration.findUnique({ where: { id: "default" } });
   if (!settings || settings.mode === "disabled") return;
-  const channel = await prisma.channel.findUnique({ where: { type: "whatsapp" } });
-  const config = channel?.config as Record<string, unknown> | undefined;
-  if (config?.browserDesiredEnabled === false || config?.browserEnabled === false) return;
+  // Importing a confirmed RocketSender reply is independent of Owly's AI
+  // processing toggle. This queue only writes the reply into Owly; it never
+  // generates or sends a WhatsApp response.
   const now = new Date();
   const due = await prisma.rocketImportEvent.findMany({ where: { organizationId, OR: [
     { status: "pending", nextAttemptAt: { lte: now } },
