@@ -76,7 +76,10 @@ export async function PUT(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, email, phone, whatsapp, tags, isBlocked, metadata } = body;
+    const { name, companyName, businessType, companyAddress, website, email, phone, whatsapp, tags, isBlocked, metadata } = body;
+    if (website !== undefined && website !== "" && !isValidWebsite(website)) {
+      return NextResponse.json({ error: "Website must be a valid http or https URL" }, { status: 400 });
+    }
 
     const existing = await prisma.customer.findUnique({ where: { id } });
     if (!existing) {
@@ -90,6 +93,10 @@ export async function PUT(
       where: { id },
       data: {
         ...(name !== undefined && { name: name.trim() }),
+        ...(companyName !== undefined && { companyName: companyName.trim() }),
+        ...(businessType !== undefined && { businessType: businessType.trim() }),
+        ...(companyAddress !== undefined && { companyAddress: companyAddress.trim() }),
+        ...(website !== undefined && { website: website.trim() }),
         ...(email !== undefined && { email: email.trim() }),
         ...(phone !== undefined && { phone: phone.trim() }),
         ...(whatsapp !== undefined && { whatsapp: whatsapp.trim() }),
@@ -114,6 +121,14 @@ export async function PUT(
       { status: 500 }
     );
   }
+}
+
+function isValidWebsite(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value.trim());
+    return ["http:", "https:"].includes(url.protocol) && value.length <= 2048;
+  } catch { return false; }
 }
 
 export async function DELETE(

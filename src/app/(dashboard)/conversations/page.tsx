@@ -94,6 +94,7 @@ export default function ConversationsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [replyText, setReplyText] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState("");
   const [mobileShowDetail, setMobileShowDetail] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -155,19 +156,21 @@ export default function ConversationsPage() {
   const handleSendReply = async () => {
     if (!replyText.trim() || !selectedId || sending) return;
     setSending(true);
+    setSendError("");
     try {
       const res = await fetch(`/api/conversations/${selectedId}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content: replyText.trim(), role: "admin" }),
       });
-      if (res.ok) {
-        setReplyText("");
-        fetchConversationDetail(selectedId);
-        fetchConversations();
-      }
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof result.error === "string" ? result.error : "The message could not be sent.");
+      setReplyText("");
+      fetchConversationDetail(selectedId);
+      fetchConversations();
     } catch (error) {
       console.error("Failed to send message:", error);
+      setSendError(error instanceof Error ? error.message : "The message could not be sent.");
     } finally {
       setSending(false);
     }
@@ -565,6 +568,7 @@ export default function ConversationsPage() {
 
               {/* Reply Input */}
               <div className="px-4 py-3 bg-owly-surface border-t border-owly-border">
+                {sendError && <p role="alert" className="mb-2 text-sm text-red-700">{sendError}</p>}
                 <div className="flex items-end gap-2">
                   <div className="flex-1 relative">
                     <textarea

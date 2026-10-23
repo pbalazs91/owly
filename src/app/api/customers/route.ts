@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { name, email, phone, whatsapp, tags, notes, metadata } = body;
+    const { name, companyName, businessType, companyAddress, website, email, phone, whatsapp, tags, notes, metadata } = body;
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json(
@@ -69,10 +69,15 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (website && !isValidWebsite(website)) return NextResponse.json({ error: "Website must be a valid http or https URL" }, { status: 400 });
 
     const customer = await prisma.customer.create({
       data: {
         name: name.trim(),
+        companyName: typeof companyName === "string" ? companyName.trim() : "",
+        businessType: typeof businessType === "string" ? businessType.trim() : "",
+        companyAddress: typeof companyAddress === "string" ? companyAddress.trim() : "",
+        website: typeof website === "string" ? website.trim() : "",
         email: email?.trim() || "",
         phone: phone?.trim() || "",
         whatsapp: whatsapp?.trim() || "",
@@ -100,4 +105,12 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+function isValidWebsite(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value.trim());
+    return ["http:", "https:"].includes(url.protocol) && value.length <= 2048;
+  } catch { return false; }
 }

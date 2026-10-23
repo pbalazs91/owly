@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
 import { emitNewMessage } from "@/lib/realtime";
+import { sendInfobipText, sendPeachAppMessage, type ProviderSendResult } from "@/lib/channels/whatsapp-providers";
 
 export async function GET(
   request: NextRequest,
@@ -73,11 +74,57 @@ export async function POST(
     const validRoles = ["customer", "assistant", "system"];
     const messageRole = validRoles.includes(role) ? role : "assistant";
 
+    let delivery: ProviderSendResult | null = null;
+    let provider: "infobip" | "peach" | null = null;
+    if (messageRole === "assistant" && conversation.channel === "whatsapp") {
+      const metadata = (conversation.metadata || {}) as Record<string, unknown>;
+      const configRow = await prisma.channel.findUnique({ where: { type: "whatsapp" } });
+      const config = (configRow?.config || {}) as Record<string, unknown>;
+      const providerSettings = (config.providerSettings || {}) as Record<string, Record<string, unknown>>;
+      const candidate = metadata.whatsappProvider || config.primaryProvider;
+      if (candidate === "infobip" || candidate === "peach") {
+        provider = candidate;
+        try {
+          if (provider === "infobip") {
+            const value = providerSettings.infobip || {};
+            delivery = await sendInfobipText({
+              baseUrl: typeof value.baseUrl === "string" ? value.baseUrl : "",
+              apiKey: typeof value.apiKey === "string" ? value.apiKey : "",
+              sender: typeof value.sender === "string" ? value.sender : "",
+            }, conversation.customerContact, content.trim());
+          } else {
+            const value = providerSettings.peach || {};
+            delivery = await sendPeachAppMessage({
+              apiKey: typeof value.apiKey === "string" ? value.apiKey : "",
+              flowId: typeof value.flowId === "string" ? value.flowId : "",
+            }, conversation.customerContact, content.trim());
+          }
+        } catch {
+          delivery = { outcome: "uncertain", code: "provider_call_failed" };
+        }
+        if (delivery.outcome === "rejected") {
+          return NextResponse.json(
+            { error: "A WhatsApp-szolgáltató elutasította a küldést. Kód: " + delivery.code, delivery: "rejected" },
+            { status: 502 }
+          );
+        }
+        if (delivery.outcome === "uncertain") {
+          return NextResponse.json(
+            { error: "A küldés eredménye bizonytalan; ne küldd el újra, amíg nem ellenőrizted a szolgáltató kimenő naplóját.", delivery: "uncertain" },
+            { status: 409 }
+          );
+        }
+      }
+    }
+
     const message = await prisma.message.create({
       data: {
         conversationId: id,
         role: messageRole,
         content: content.trim(),
+        ...(delivery?.outcome === "accepted" && provider ? {
+          toolCalls: { provider, providerMessageId: delivery.providerMessageId, delivery: "accepted" },
+        } : {}),
       },
     });
 
@@ -88,7 +135,7 @@ export async function POST(
 
     emitNewMessage(id, { id: message.id, role: messageRole, content: content.trim() });
 
-    return NextResponse.json(message, { status: 201 });
+    return NextResponse.json({ ...message, ...(delivery ? { delivery: delivery.outcome, provider } : {}) }, { status: 201 });
   } catch (error) {
     logger.error("Failed to create message:", error);
     return NextResponse.json(

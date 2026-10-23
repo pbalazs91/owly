@@ -4,6 +4,17 @@ import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
 
 const CHANNEL_TYPES = ["whatsapp", "email", "phone", "sms", "telegram"];
+function redactProviderSecrets(channel: { config: unknown; [key: string]: unknown }) {
+  const config = { ...((channel.config || {}) as Record<string, unknown>) };
+  const providers = (config.providerSettings || {}) as Record<string, Record<string, unknown>>;
+  if (providers.infobip || providers.peach) {
+    config.providerSettings = {
+      infobip: { baseUrl: providers.infobip?.baseUrl || "", sender: providers.infobip?.sender || "", hasApiKey: !!providers.infobip?.apiKey, hasWebhookToken: !!providers.infobip?.webhookToken },
+      peach: { flowId: providers.peach?.flowId || "", hasApiKey: !!providers.peach?.apiKey, hasWebhookToken: !!providers.peach?.webhookToken },
+    };
+  }
+  return { ...channel, config };
+}
 
 type RouteContext = { params: Promise<{ type: string }> };
 
@@ -37,7 +48,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       });
     }
 
-    return NextResponse.json(channel);
+    return NextResponse.json(redactProviderSecrets(channel as unknown as { config: unknown; [key: string]: unknown }), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     logger.error("Failed to fetch channel:", error);
     return NextResponse.json(
@@ -63,23 +74,36 @@ export async function PUT(request: NextRequest, context: RouteContext) {
 
     const body = await request.json();
     const { isActive, config, status } = body;
+    const existing = await prisma.channel.findUnique({ where: { type } });
+    let mergedConfig = config;
+    if (config && typeof config === "object" && !Array.isArray(config)) {
+      const incomingConfig = config as Record<string, unknown>;
+      const oldConfig = (existing?.config || {}) as Record<string, unknown>;
+      mergedConfig = {
+        ...oldConfig,
+        ...incomingConfig,
+        // Provider credentials are intentionally omitted from channel GET
+        // responses, so preserve them when the general channel form saves.
+        ...(oldConfig.providerSettings ? { providerSettings: oldConfig.providerSettings } : {}),
+      };
+    }
 
     const channel = await prisma.channel.upsert({
       where: { type },
       update: {
         isActive: typeof isActive === "boolean" ? isActive : undefined,
-        config: config ?? undefined,
+        config: mergedConfig ?? undefined,
         status: status ?? undefined,
       },
       create: {
         type,
         isActive: typeof isActive === "boolean" ? isActive : false,
-        config: config ?? {},
+        config: mergedConfig ?? {},
         status: status ?? "disconnected",
       },
     });
 
-    return NextResponse.json(channel);
+    return NextResponse.json(redactProviderSecrets(channel as unknown as { config: unknown; [key: string]: unknown }));
   } catch (error) {
     logger.error("Failed to update channel:", error);
     return NextResponse.json(
@@ -127,7 +151,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
         },
       });
       return NextResponse.json({
-        ...updated,
+        ...redactProviderSecrets(updated as unknown as { config: unknown; [key: string]: unknown }),
         message: `${type} channel disconnected`,
       });
     }
@@ -146,7 +170,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       });
 
       return NextResponse.json({
-        ...updated,
+        ...redactProviderSecrets(updated as unknown as { config: unknown; [key: string]: unknown }),
         message: `${type} channel connected`,
       });
     }
@@ -162,7 +186,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({
         success: true,
         message: `${type} connection test initiated`,
-        channel,
+        channel: redactProviderSecrets(channel as unknown as { config: unknown; [key: string]: unknown }),
       });
     }
 

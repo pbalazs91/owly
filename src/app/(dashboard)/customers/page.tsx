@@ -2,6 +2,7 @@
 
 import { Header } from "@/components/layout/header";
 import { CompanyNameLookup } from "@/components/company-name-lookup";
+import { Modal } from "@/components/ui/modal";
 import {
   Search,
   Plus,
@@ -21,9 +22,14 @@ import {
   Contact,
   Clock,
   User,
+  Upload,
+  Globe,
+  Building2,
+  MapPin,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn, formatDate, getStatusColor, getChannelLabel } from "@/lib/utils";
+import { getCustomerImportCsvHeaders, parseCustomerImportCsv, type CustomerImportField, type CustomerImportMapping } from "@/lib/customer-import";
 
 // ---------- Types ----------
 
@@ -49,6 +55,10 @@ interface ConversationData {
 interface CustomerData {
   id: string;
   name: string;
+  companyName: string;
+  businessType: string;
+  companyAddress: string;
+  website: string;
   email: string;
   phone: string;
   whatsapp: string;
@@ -67,6 +77,12 @@ interface PaginationData {
   limit: number;
   total: number;
   totalPages: number;
+}
+
+interface CompanyLookupMatch {
+  customerId: string;
+  phone: string;
+  candidates: { name: string; sourceUrl: string; token: string }[];
 }
 
 // ---------- Tag colors ----------
@@ -113,6 +129,17 @@ export default function CustomersPage() {
     totalPages: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
+  const [importError, setImportError] = useState("");
+  const [importCsvText, setImportCsvText] = useState("");
+  const [importCsvName, setImportCsvName] = useState("");
+  const [importHeaders, setImportHeaders] = useState<string[]>([]);
+  const [importMapping, setImportMapping] = useState<CustomerImportMapping>({});
+  const [lookupMatches, setLookupMatches] = useState<CompanyLookupMatch[]>([]);
+  const [lookupMessage, setLookupMessage] = useState("");
+  const [acceptingCompany, setAcceptingCompany] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [blockedFilter, setBlockedFilter] = useState(false);
 
@@ -124,6 +151,10 @@ export default function CustomersPage() {
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState({
     name: "",
+    companyName: "",
+    businessType: "",
+    companyAddress: "",
+    website: "",
     email: "",
     phone: "",
     whatsapp: "",
@@ -138,6 +169,10 @@ export default function CustomersPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState({
     name: "",
+    companyName: "",
+    businessType: "",
+    companyAddress: "",
+    website: "",
     email: "",
     phone: "",
     whatsapp: "",
@@ -186,6 +221,10 @@ export default function CustomersPage() {
         setSelectedCustomer(data);
         setEditForm({
           name: data.name,
+          companyName: data.companyName || "",
+          businessType: data.businessType || "",
+          companyAddress: data.companyAddress || "",
+          website: data.website || "",
           email: data.email,
           phone: data.phone,
           whatsapp: data.whatsapp,
@@ -303,7 +342,7 @@ export default function CustomersPage() {
       });
       if (res.ok) {
         setShowAddModal(false);
-        setAddForm({ name: "", email: "", phone: "", whatsapp: "", tags: "" });
+        setAddForm({ name: "", companyName: "", businessType: "", companyAddress: "", website: "", email: "", phone: "", whatsapp: "", tags: "" });
         fetchCustomers();
       }
     } catch (error) {
@@ -311,6 +350,104 @@ export default function CustomersPage() {
     } finally {
       setAddLoading(false);
     }
+  };
+
+  const handleSelectImportFile = async (file?: File) => {
+    if (!file) return;
+    setImportMessage(""); setImportError("");
+    setImportCsvText(""); setImportCsvName(""); setImportHeaders([]); setImportMapping({});
+    try {
+      if (file.size > 10 * 1024 * 1024) throw new Error("CSV files must be 10 MB or smaller.");
+      const text = await file.text();
+      const headers = getCustomerImportCsvHeaders(text);
+      const normalizedHeaders = headers.map(header => header.trim().toLowerCase());
+      const findHeader = (...aliases: string[]) => headers[normalizedHeaders.findIndex(header => aliases.includes(header))] || "";
+      setImportCsvText(text);
+      setImportCsvName(file.name);
+      setImportHeaders(headers);
+      setImportMapping({
+        name: findHeader("name", "customer", "contact name", "full name"),
+        companyName: findHeader("companyname", "company name", "company", "business name", "cégnév"),
+        businessType: findHeader("businesstype", "business type", "industry", "sector", "üzleti típus", "tevékenység"),
+        companyAddress: findHeader("companyaddress", "company address", "company headquarters", "headquarters", "address", "székhely", "cég székhelye"),
+        website: findHeader("website", "web site", "url", "weboldal"),
+        email: findHeader("email", "e-mail", "email address"),
+        phone: findHeader("phone", "telephone", "mobile", "telefon"),
+        whatsapp: findHeader("whatsapp", "whatsapp number", "wa"),
+        tags: findHeader("tags", "labels", "címkék"),
+      });
+    } catch (error) { setImportError(error instanceof Error ? error.message : "The CSV could not be read."); }
+  };
+
+  const handleImportCustomers = async () => {
+    if (!importCsvText || importing) return;
+    setImporting(true); setImportMessage(""); setImportError("");
+    try {
+      const contacts = parseCustomerImportCsv(importCsvText, importMapping);
+      const totals = { imported: 0, created: 0, updated: 0, duplicates: 0, customerIds: [] as string[] };
+      const batchSize = 250;
+      for (let start = 0; start < contacts.length; start += batchSize) {
+        const batch = contacts.slice(start, start + batchSize);
+        const response = await fetch("/api/customers/import", {
+          method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contacts: batch }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || `The contact import failed at row ${start + 1}.`);
+        totals.imported += result.imported || 0;
+        totals.created += result.created || 0;
+        totals.updated += result.updated || 0;
+        totals.duplicates += result.duplicates || 0;
+        if (Array.isArray(result.customerIds)) totals.customerIds.push(...result.customerIds);
+        setImportMessage(`Imported ${Math.min(start + batch.length, contacts.length)} of ${contacts.length} contacts…`);
+      }
+      setImportMessage(`${totals.imported} contacts imported: ${totals.created} new, ${totals.updated} updated, ${totals.duplicates} duplicate rows skipped.`);
+      setLookupMatches([]); setLookupMessage("");
+      if (totals.customerIds.length) {
+        setLookupMessage("Searching public company phone listings…");
+        const lookupTotals = { searched: 0, matched: 0, matches: [] as CompanyLookupMatch[] };
+        let lookupFailed = false;
+        try {
+          for (let start = 0; start < totals.customerIds.length; start += batchSize) {
+            const lookupResponse = await fetch("/api/customers/import/lookup", {
+              method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customerIds: totals.customerIds.slice(start, start + batchSize) }),
+            });
+            const lookupResult = await lookupResponse.json();
+            if (!lookupResponse.ok) { lookupFailed = true; break; }
+            lookupTotals.searched += lookupResult.searched || 0;
+            lookupTotals.matched += lookupResult.matched || 0;
+            if (Array.isArray(lookupResult.matches)) lookupTotals.matches.push(...lookupResult.matches);
+          }
+        } catch { lookupFailed = true; }
+        if (lookupFailed) {
+          setLookupMessage("The public company search is temporarily unavailable. Your contacts were imported successfully; you can look up names from their profiles.");
+        } else {
+          setLookupMatches(lookupTotals.matches);
+          setLookupMessage(lookupTotals.matched
+            ? `Found public company matches for ${lookupTotals.matched} of ${lookupTotals.searched} phone numbers. Review and approve each name below.`
+            : `No exact public company phone matches found for ${lookupTotals.searched} numbers. The contacts were imported; you can still check them individually from their profiles.`);
+        }
+      }
+      await fetchCustomers(1);
+      setImportCsvText(""); setImportCsvName(""); setImportHeaders([]); setImportMapping({});
+      setShowImportModal(false);
+    } catch (error) { setImportError(error instanceof Error ? error.message : "The CSV could not be read."); }
+    finally { setImporting(false); }
+  };
+
+  const acceptCompanyLookup = async (match: CompanyLookupMatch, candidate: CompanyLookupMatch["candidates"][number]) => {
+    setAcceptingCompany(match.customerId); setImportError("");
+    try {
+      const response = await fetch(`/api/customers/${match.customerId}/company-name`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "accept", token: candidate.token }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "The company name could not be saved.");
+      setLookupMatches(current => current.filter(item => item.customerId !== match.customerId));
+      setLookupMessage(`${candidate.name} saved for ${match.phone}. Source: Wikidata.`);
+      await fetchCustomers(1);
+      if (selectedCustomer?.id === match.customerId) await fetchCustomerDetail(match.customerId);
+    } catch (error) { setImportError(error instanceof Error ? error.message : "The company name could not be saved."); }
+    finally { setAcceptingCompany(""); }
   };
 
   const handleRemoveTag = (tagToRemove: string) => {
@@ -370,15 +507,27 @@ export default function CustomersPage() {
         title="Customers"
         description="Manage your customer profiles and history"
         actions={
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-owly-primary text-white rounded-lg hover:bg-owly-primary-dark transition-colors text-sm font-medium"
-          >
-            <Plus className="h-4 w-4" />
-            Add Customer
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => { setImportMessage(""); setImportError(""); setShowImportModal(true); }}
+              className="flex items-center gap-2 px-4 py-2 border border-owly-border text-owly-text rounded-lg hover:bg-owly-primary-50 transition-colors text-sm font-medium"
+            >
+              <Upload className="h-4 w-4" />
+              Import Contacts
+            </button>
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-owly-primary text-white rounded-lg hover:bg-owly-primary-dark transition-colors text-sm font-medium"
+            >
+              <Plus className="h-4 w-4" />
+              Add Customer
+            </button>
+          </div>
         }
       />
+
+      {!showAddModal && !showImportModal && (importMessage || importError || lookupMessage) && <div className="px-6 py-2 space-y-1 text-sm">{importMessage && <p role="status" className="text-green-700">{importMessage}</p>}{lookupMessage && <p role="status" className="text-owly-text-light">{lookupMessage}</p>}{importError && <p role="alert" className="text-red-700">{importError}</p>}</div>}
+      {lookupMatches.length > 0 && <section className="px-6 py-3 border-b border-owly-border bg-owly-surface space-y-2"><h2 className="text-sm font-semibold">Public company name matches</h2><p className="text-xs text-owly-text-light">Owly only searched exact phone matches in Wikidata&apos;s public company records. Review the source before approving; no private-person names are inferred.</p>{lookupMatches.flatMap(match => match.candidates.map(candidate => <div key={`${match.customerId}-${candidate.sourceUrl}`} className="flex flex-wrap items-center gap-2 border-t border-owly-border py-2 text-sm"><span className="font-medium">{match.phone} → {candidate.name}</span><a className="underline text-owly-text-light" href={candidate.sourceUrl} target="_blank" rel="noopener noreferrer">Source</a><button type="button" disabled={!!acceptingCompany} className="rounded-lg border border-owly-border px-3 py-1 disabled:opacity-50" onClick={() => void acceptCompanyLookup(match, candidate)}>{acceptingCompany === match.customerId ? "Saving…" : "Approve name"}</button></div>))}</section>}
 
       <div className="flex-1 flex overflow-hidden">
         {/* Main content */}
@@ -681,6 +830,10 @@ export default function CustomersPage() {
                         setEditMode(false);
                         setEditForm({
                           name: selectedCustomer.name,
+                          companyName: selectedCustomer.companyName || "",
+                          businessType: selectedCustomer.businessType || "",
+                          companyAddress: selectedCustomer.companyAddress || "",
+                          website: selectedCustomer.website || "",
                           email: selectedCustomer.email,
                           phone: selectedCustomer.phone,
                           whatsapp: selectedCustomer.whatsapp,
@@ -742,6 +895,10 @@ export default function CustomersPage() {
                 <div className="px-4 py-3 border-b border-owly-border space-y-2">
                   {editMode ? (
                     <div className="space-y-2">
+                      <div><label className="text-xs text-owly-text-light font-medium">Company name</label><input type="text" value={editForm.companyName} onChange={(e) => setEditForm({ ...editForm, companyName: e.target.value })} className="w-full mt-0.5 text-sm bg-owly-bg border border-owly-border rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-owly-primary/30" placeholder="Company name" /></div>
+                      <div><label className="text-xs text-owly-text-light font-medium">Business type</label><input type="text" value={editForm.businessType} onChange={(e) => setEditForm({ ...editForm, businessType: e.target.value })} className="w-full mt-0.5 text-sm bg-owly-bg border border-owly-border rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-owly-primary/30" placeholder="Business type" /></div>
+                      <div><label className="text-xs text-owly-text-light font-medium">Company headquarters</label><input type="text" value={editForm.companyAddress} onChange={(e) => setEditForm({ ...editForm, companyAddress: e.target.value })} className="w-full mt-0.5 text-sm bg-owly-bg border border-owly-border rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-owly-primary/30" placeholder="Company address" /></div>
+                      <div><label className="text-xs text-owly-text-light font-medium">Website</label><input type="url" value={editForm.website} onChange={(e) => setEditForm({ ...editForm, website: e.target.value })} className="w-full mt-0.5 text-sm bg-owly-bg border border-owly-border rounded px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-owly-primary/30" placeholder="https://example.com" /></div>
                       <div>
                         <label className="text-xs text-owly-text-light font-medium">
                           Email
@@ -790,6 +947,10 @@ export default function CustomersPage() {
                     </div>
                   ) : (
                     <div className="grid grid-cols-2 gap-2">
+                      {selectedCustomer.companyName && <div className="flex items-center gap-2"><Building2 className="h-3.5 w-3.5 text-owly-text-light flex-shrink-0" /><span className="text-sm text-owly-text truncate">{selectedCustomer.companyName}</span></div>}
+                      {selectedCustomer.businessType && <div className="flex items-center gap-2"><Contact className="h-3.5 w-3.5 text-owly-text-light flex-shrink-0" /><span className="text-sm text-owly-text truncate">{selectedCustomer.businessType}</span></div>}
+                      {selectedCustomer.companyAddress && <div className="flex items-center gap-2"><MapPin className="h-3.5 w-3.5 text-owly-text-light flex-shrink-0" /><span className="text-sm text-owly-text truncate" title={selectedCustomer.companyAddress}>{selectedCustomer.companyAddress}</span></div>}
+                      {selectedCustomer.website && <div className="flex items-center gap-2"><Globe className="h-3.5 w-3.5 text-owly-text-light flex-shrink-0" /><a className="text-sm text-owly-primary underline truncate" href={selectedCustomer.website} target="_blank" rel="noopener noreferrer">{selectedCustomer.website}</a></div>}
                       {selectedCustomer.email && (
                         <div className="flex items-center gap-2">
                           <Mail className="h-3.5 w-3.5 text-owly-text-light flex-shrink-0" />
@@ -1036,13 +1197,47 @@ export default function CustomersPage() {
       </div>
 
       {/* Add Customer Modal */}
+      <Modal open={showImportModal} onClose={() => !importing && setShowImportModal(false)} title="Import customers" size="lg" className="max-h-[90vh] overflow-y-auto">
+        <div className="space-y-4">
+          <p className="text-sm text-owly-text-light">Upload a CSV contact list. You can map any source column to Owly fields. Up to 15,000 contacts can be imported in safe batches.</p>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className={cn("inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-owly-border text-sm font-medium cursor-pointer hover:bg-owly-primary-50", importing && "opacity-50 pointer-events-none")}>
+              <Upload className="h-4 w-4" />{importing ? "Importing…" : "Choose CSV file"}
+              <input className="sr-only" type="file" accept=".csv,text/csv" disabled={importing} onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void handleSelectImportFile(file); }} />
+            </label>
+            <a href="/owly-customer-import-template.csv" download className="text-sm underline text-owly-text-light">Download CSV template</a>
+          </div>
+          {importCsvName && !importCsvText && <p className="text-sm text-owly-text-light">Reading {importCsvName}…</p>}
+          {importCsvText && <div className="rounded-lg border border-owly-border p-3 space-y-3">
+            <p className="text-sm font-medium text-owly-text">Match CSV columns · {importCsvName}</p>
+            <p className="text-xs text-owly-text-light">Choose which source column contains each Owly field. At least one of email, phone, or WhatsApp must be mapped.</p>
+            {([
+              ["name", "Customer name"], ["companyName", "Company name"], ["businessType", "Business type"], ["companyAddress", "Company headquarters"], ["website", "Website"], ["email", "Email"], ["phone", "Phone"], ["whatsapp", "WhatsApp"], ["tags", "Tags"],
+            ] as [CustomerImportField, string][]).map(([field, label]) => <label key={field} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)] items-center gap-2 text-sm">
+              <span className="text-owly-text">{label}</span>
+              <select value={importMapping[field] || ""} disabled={importing} onChange={event => setImportMapping(current => ({ ...current, [field]: event.target.value }))} className="min-w-0 rounded border border-owly-border bg-owly-bg px-2 py-1.5 text-sm">
+                <option value="">Skip this field</option>
+                {importHeaders.map((header, index) => <option key={`${header}-${index}`} value={header}>{header}</option>)}
+              </select>
+            </label>)}
+            <p className="text-xs text-owly-text-light">15,000 contact maximum · 10 MB CSV maximum · Existing contacts are matched and updated.</p>
+            <button type="button" onClick={() => void handleImportCustomers()} disabled={importing} className="rounded-lg bg-owly-primary px-3 py-2 text-sm font-medium text-white hover:bg-owly-primary-dark disabled:opacity-50">{importing ? "Importing…" : "Import mapped contacts"}</button>
+          </div>}
+          {importing && <p role="status" className="text-sm text-owly-text-light">{importMessage || "Importing contacts…"}</p>}
+          {importMessage && !importing && <p role="status" className="text-sm text-green-700">{importMessage}</p>}
+          {lookupMessage && <p role="status" className="text-sm text-owly-text-light">{lookupMessage}</p>}
+          {lookupMatches.length > 0 && <section className="space-y-2"><h3 className="text-sm font-semibold">Public company name matches</h3><p className="text-xs text-owly-text-light">Review the public source before approving any name.</p>{lookupMatches.map(match => match.candidates.map(candidate => <div key={`${match.customerId}-${candidate.sourceUrl}`} className="flex flex-wrap items-center gap-2 border-t border-owly-border py-2 text-sm"><span className="font-medium">{match.phone} → {candidate.name}</span><a className="underline text-owly-text-light" href={candidate.sourceUrl} target="_blank" rel="noopener noreferrer">Source</a><button type="button" disabled={!!acceptingCompany} className="rounded-lg border border-owly-border px-3 py-1 disabled:opacity-50" onClick={() => void acceptCompanyLookup(match, candidate)}>{acceptingCompany === match.customerId ? "Saving…" : "Approve name"}</button></div>))}</section>}
+          {importError && <p role="alert" className="text-sm text-red-700">{importError}</p>}
+        </div>
+      </Modal>
+
       {showAddModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div
             className="absolute inset-0 bg-black/40"
             onClick={() => setShowAddModal(false)}
           />
-          <div className="relative bg-owly-surface rounded-xl shadow-xl border border-owly-border w-full max-w-md mx-4 animate-scale-in">
+          <div className="relative bg-owly-surface rounded-xl shadow-xl border border-owly-border w-full max-w-md max-h-[90vh] mx-4 flex flex-col animate-scale-in">
             <div className="flex items-center justify-between px-5 py-4 border-b border-owly-border">
               <h3 className="text-lg font-semibold text-owly-text">
                 Add Customer
@@ -1054,7 +1249,7 @@ export default function CustomersPage() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="px-5 py-4 space-y-3">
+            <div className="px-5 py-4 space-y-3 overflow-y-auto">
               <div>
                 <label className="block text-sm font-medium text-owly-text mb-1">
                   Name *
@@ -1069,6 +1264,22 @@ export default function CustomersPage() {
                   placeholder="Customer name"
                   autoFocus
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-owly-text mb-1">Company name</label>
+                <input type="text" value={addForm.companyName} onChange={(e) => setAddForm({ ...addForm, companyName: e.target.value })} className="w-full px-3 py-2 text-sm border border-owly-border rounded-lg bg-owly-bg focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary" placeholder="Company name" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-owly-text mb-1">Business type</label>
+                <input type="text" value={addForm.businessType} onChange={(e) => setAddForm({ ...addForm, businessType: e.target.value })} className="w-full px-3 py-2 text-sm border border-owly-border rounded-lg bg-owly-bg focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary" placeholder="e.g. Restaurant, Agency" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-owly-text mb-1">Company headquarters</label>
+                <input type="text" value={addForm.companyAddress} onChange={(e) => setAddForm({ ...addForm, companyAddress: e.target.value })} className="w-full px-3 py-2 text-sm border border-owly-border rounded-lg bg-owly-bg focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary" placeholder="Company address" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-owly-text mb-1">Website</label>
+                <input type="url" value={addForm.website} onChange={(e) => setAddForm({ ...addForm, website: e.target.value })} className="w-full px-3 py-2 text-sm border border-owly-border rounded-lg bg-owly-bg focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary" placeholder="https://example.com" />
               </div>
               <div>
                 <label className="block text-sm font-medium text-owly-text mb-1">

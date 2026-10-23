@@ -127,12 +127,12 @@ function ticketsToCSV(tickets: Array<{
 }
 
 function customersToCSV(customers: Array<{
-  id: string; name: string; email: string; phone: string; whatsapp: string;
+  id: string; name: string; companyName: string; businessType: string; companyAddress: string; website: string; email: string; phone: string; whatsapp: string;
   tags: string; isBlocked: boolean; firstContact: Date; lastContact: Date;
 }>): string {
-  const headers = ["ID", "Name", "Email", "Phone", "WhatsApp", "Tags", "Blocked", "First Contact", "Last Contact"];
+  const headers = ["ID", "Name", "Company Name", "Business Type", "Company Headquarters", "Website", "Email", "Phone", "WhatsApp", "Tags", "Blocked", "First Contact", "Last Contact"];
   const rows = customers.map((c) => [
-    c.id, c.name, c.email, c.phone, c.whatsapp, c.tags, c.isBlocked ? "Yes" : "No",
+    c.id, c.name, c.companyName, c.businessType, c.companyAddress, c.website, c.email, c.phone, c.whatsapp, c.tags, c.isBlocked ? "Yes" : "No",
     c.firstContact.toISOString(), c.lastContact.toISOString(),
   ]);
   return [headers, ...rows].map((row) => row.map(escapeCSV).join(",")).join("\n");

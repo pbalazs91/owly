@@ -26,6 +26,12 @@ beforeEach(() => {
 });
 
 describe("Restricted WhatsApp browser connection", () => {
+  it("prevents the legacy AI pipeline while reply-only RocketSender mode is active", async () => {
+    db.rocketIntegration.findUnique.mockResolvedValueOnce({ mode: "trial" });
+    expect((await POST(request({ action: "incoming", chatId: "123@c.us", id: "test", content: "Szia" }))).status).toBe(409);
+    expect(db.message.create).not.toHaveBeenCalled();
+    expect(db.settings.findUnique).not.toHaveBeenCalled();
+  });
   it("imports historical text with original times and roles without starting AI", async () => {
     db.channel.findUnique.mockResolvedValue({ config: { browserTokenId: "test-pair", browserHistory: { id: "job", status: "pending" } } });
     db.message.findFirst.mockResolvedValue(null);

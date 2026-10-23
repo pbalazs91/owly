@@ -1,0 +1,73 @@
+import { createRequire } from "node:module";
+import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
+import assert from "node:assert/strict";
+
+async function main() {
+  const dependencies = createRequire(resolve(process.env.PGLITE_TEST_RUNTIME || ".local-test/package.json"));
+  const { PGlite } = dependencies("@electric-sql/pglite");
+  const { PGLiteSocketServer } = dependencies("@electric-sql/pglite-socket");
+  const database = await PGlite.create();
+  mkdirSync(resolve(".local-test"), { recursive: true });
+  const baseSchema = resolve(".local-test/base.prisma"), baseSql = resolve(".local-test/base.sql");
+  writeFileSync(baseSchema, execFileSync("git", ["-c", "safe.directory=" + process.cwd().replaceAll("\\", "/"), "show", "8798eb4ae0c7b1897965c073eee6ec4a78bffd05:prisma/schema.prisma"]));
+  execFileSync(process.execPath, ["node_modules/prisma/build/index.js", "migrate", "diff", "--from-empty", "--to-schema", baseSchema, "--script", "--output", baseSql], { env: { ...process.env, DATABASE_URL: "postgresql://test:test@localhost:5432/unused" } });
+  await database.exec(readFileSync(baseSql, "utf8"));
+  await database.exec(`INSERT INTO "Settings" ("id", "businessName", "updatedAt") VALUES ('migration-sentinel', 'PRESERVED', CURRENT_TIMESTAMP);`);
+  await database.exec(readFileSync(resolve("prisma/migrations/20261022220000_rocketsender_reply_import/migration.sql"), "utf8"));
+  assert.equal((await database.query(`SELECT "businessName" FROM "Settings" WHERE id='migration-sentinel'`)).rows[0].businessName, "PRESERVED");
+  const port = Number(process.env.ROCKET_TEST_PORT || "55433");
+  const server = new PGLiteSocketServer({ db: database, host: "127.0.0.1", port, maxConnections: 20 });
+  await server.start();
+  process.env.DATABASE_URL = `postgresql://postgres:postgres@127.0.0.1:${port}/owly_rocket_test`;
+  process.env.JWT_SECRET = "local-rocketsender-preview-only-not-production";
+  const { prisma } = await import("../src/lib/prisma");
+  const { registerOutbound, outboundSchema, enqueueReply, replySchema, drainRocketQueue } = await import("../src/lib/rocketsender/importer");
+  const { hashPassword } = await import("../src/lib/auth");
+  const accountId = "+12025550100", phone = "+12025550123";
+  await prisma.admin.create({ data: { username: "preview-admin", password: await hashPassword("local-preview-only"), name: "Helyi próbafelület" } });
+  await prisma.settings.create({ data: { id: "default", businessName: "RocketSender helyi próba" } });
+  await prisma.rocketIntegration.create({ data: { id: "default", mode: "trial", accountId, trialPhone: phone } });
+  const outbound = outboundSchema.parse({ status: "sent", accountId, phone, campaignId: "local-trial", sourceMessageId: "out-1", content: "Original campaign message", sentAt: "2026-10-20T12:00:00Z" });
+  await registerOutbound(outbound);
+  assert.equal(await prisma.customer.count(), 0, "Sending must not create a customer");
+  const reply = replySchema.parse({ eventType: "reply", eventId: "in-1", externalMessageId: "wa-1", conversationId: phone, accountId, phone, name: "Teszt ügyfél", content: "Customer reply", occurredAt: "2026-10-20T12:05:00Z" });
+  assert.equal((await enqueueReply({ ...reply, eventType: "delivered" })).ignored, true);
+  assert.equal((await enqueueReply({ ...reply, phone: "+12025550124" })).ignored, true);
+  assert.equal((await enqueueReply({ ...reply, occurredAt: "2026-10-20T11:00:00Z" })).ignored, true);
+  assert.equal(await prisma.customer.count(), 0);
+  await enqueueReply(reply); await drainRocketQueue();
+  assert.equal(await prisma.customer.count(), 1);
+  assert.equal(await prisma.conversation.count(), 1);
+  assert.equal(await prisma.message.count(), 2, "Original outgoing text and first reply");
+  const customer = await prisma.customer.findFirstOrThrow();
+  assert.equal(customer.name, "Teszt ügyfél");
+  const firstMessage = await prisma.message.findFirstOrThrow({ where: { role: "customer" } });
+  assert.equal(firstMessage.createdAt.toISOString(), reply.occurredAt.replace("Z", ".000Z"));
+  await enqueueReply(reply); await drainRocketQueue();
+  await enqueueReply({ ...reply, eventId: "different-event-same-message" }); await drainRocketQueue();
+  assert.equal(await prisma.message.count(), 2, "Both event and source-message duplication are ignored");
+  await enqueueReply({ ...reply, eventId: "in-2", externalMessageId: "wa-2", content: "Second answer", occurredAt: "2026-10-20T12:06:00Z" });
+  await drainRocketQueue();
+  assert.equal(await prisma.customer.count(), 1);
+  assert.equal(await prisma.conversation.count(), 1);
+  assert.equal(await prisma.message.count(), 3);
+  assert.equal((await prisma.customer.findFirstOrThrow()).id, customer.id);
+  // Same event arriving concurrently must persist as one queue item.
+  const simultaneous = { ...reply, eventId: "concurrent-event", externalMessageId: "wa-3" };
+  await Promise.all([enqueueReply(simultaneous), enqueueReply(simultaneous)]);
+  await drainRocketQueue();
+  assert.equal(await prisma.rocketImportEvent.count({ where: { externalEventId: "concurrent-event" } }), 1);
+  assert.equal(await prisma.customer.count(), 1);
+  assert.equal(await prisma.message.count(), 4);
+  const summary = { environment: "isolated-local-PostgreSQL-WASM", customers: 1, conversations: 1, messages: 4, sendOnlyCreatesCustomer: false, receiptsIgnored: true, unknownSenderIgnored: true, earlierThanOutreachIgnored: true, eventReplayDeduplicated: true, sourceMessageReplayDeduplicated: true, concurrentEnqueueDeduplicated: true, originalTimestampPreserved: true, realRocketSenderTrial: "pending" };
+  writeFileSync(resolve(".local-test/result.json"), JSON.stringify({ ...summary, additiveMigrationPreservedExistingSettings: true }, null, 2));
+  console.log(JSON.stringify(summary));
+  await prisma.$disconnect();
+  if (process.env.KEEP_ROCKET_PREVIEW === "1") {
+    console.log("Local test database ready on 127.0.0.1:55433; synthetic data only.");
+    process.on("SIGINT", async () => { await server.stop(); await database.close(); process.exit(0); });
+  } else { await server.stop(); await database.close(); }
+}
+main().catch(error => { console.error(error); process.exit(1); });

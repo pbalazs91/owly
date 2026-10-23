@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
 import { hasPermission } from "@/lib/rbac";
 import { emitNewMessage } from "@/lib/realtime";
+import { canSendOwlyReply, markWhatsAppReplySent, markWhatsAppReplyUncertain, processDueWhatsAppFallbacks, saveWhatsAppDraft, scheduleWhatsAppFallback } from "@/lib/channels/whatsapp-fallback";
 
 const audience = "owly-whatsapp-browser";
 function signingKey() {
@@ -48,6 +49,8 @@ export async function POST(request: NextRequest) {
     if (body.action === "requestHistory") {
       const auth = await requireAuth(request, "channels:update");
       if (!isAuthenticated(auth)) return auth;
+      const rocket = await prisma.rocketIntegration.findUnique({ where: { id: "default" } });
+      if (rocket && rocket.mode !== "disabled") return json({ error: "RocketSender módban csak ügyfélválaszra indul import. Az általános előzményimport szünetel." }, 409);
       if (!config.browserTokenId) return json({ error: "Előbb párosítsd a bővítményt." }, 409);
       const history = { id: randomUUID(), status: "pending", imported: 0, chats: 0 };
       await prisma.channel.update({ where: { type: "whatsapp" }, data: { config: { ...config, browserHistory: history } } });
@@ -120,15 +123,22 @@ export async function POST(request: NextRequest) {
           ...(pending ? {} : { browserDesiredEnabled: enabled, browserAppliedRevision: typeof body.controlRevision === "string" ? body.controlRevision : "" }),
         },
       } });
+      if (Array.isArray(body.uncertainMessageIds)) {
+        for (const id of body.uncertainMessageIds.slice(0, 20)) {
+          if (typeof id === "string" && /^wab-[a-f0-9]{64}$/.test(id)) await markWhatsAppReplyUncertain(id);
+        }
+      }
+      await processDueWhatsAppFallbacks().catch(() => {});
       const history = config.browserHistory as { id?: string; status?: string } | undefined;
-      return json({ ok: true, alwaysAllowed: config.browserAlwaysAllowed || {}, ...(history?.status === "pending" ? { historyRequest: history.id } : {}), ...(pending ? { desiredEnabled: config.browserDesiredEnabled === true, controlRevision: config.browserControlRevision } : {}) });
+      const rocket = await prisma.rocketIntegration.findUnique({ where: { id: "default" } });
+      return json({ ok: true, rocket: { enabled: !!rocket && (rocket.mode === "trial" || (rocket.mode === "active" && rocket.compatibilityVerified)), accountId: rocket?.accountId || "" }, alwaysAllowed: config.browserAlwaysAllowed || {}, ...((!rocket || rocket.mode === "disabled") && history?.status === "pending" ? { historyRequest: history.id } : {}), ...(pending ? { desiredEnabled: config.browserDesiredEnabled === true, controlRevision: config.browserControlRevision } : {}) });
     }
 
     if (body.action === "historyResult" || body.action === "history") {
       const job = config.browserHistory as { id?: string; status?: string } | undefined;
       if (!job?.id || body.requestId !== job.id) return json({ error: "Nincs ilyen előzményimport." }, 409);
       if (body.action === "historyResult") {
-        const result = z.object({ status: z.enum(["done", "error"]), imported: z.number().int().min(0).max(2500), chats: z.number().int().min(0).max(50), error: z.string().max(300).optional() }).safeParse(body);
+        const result = z.object({ status: z.enum(["done", "error"]), imported: z.number().int().min(0).max(2500), chats: z.number().int().min(0).max(50), skipped: z.number().int().min(0).max(50).default(0), warning: z.string().max(300).optional(), error: z.string().max(300).optional() }).safeParse(body);
         if (!result.success) return json({ error: "Hibás importállapot." }, 400);
         await prisma.channel.update({ where: { type: "whatsapp" }, data: { config: { ...config, browserHistory: { id: job.id, ...result.data } } } });
         return json({ ok: true });
@@ -151,6 +161,8 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.action === "incoming") {
+      const rocket = await prisma.rocketIntegration.findUnique({ where: { id: "default" } });
+      if (rocket && rocket.mode !== "disabled") return json({ error: "RocketSender módban csak a válaszimport használható. Töltsd újra a 0.4.0-s bővítményt." }, 409);
       if (config.browserDesiredEnabled === false) return json({ error: "Az üzenetfeldolgozás szünetel." }, 409);
       const parsed = incomingSchema.safeParse(body);
       if (!parsed.success) return json({ error: "Csak érvényes, személyes szöveges üzenet fogadható." }, 400);
@@ -169,6 +181,11 @@ export async function POST(request: NextRequest) {
         if ((error as { code?: string }).code === "P2002") return json({ duplicate: true });
         throw error;
       }
+      await scheduleWhatsAppFallback({
+        inboundMessageId: id,
+        conversationId: conversation.id,
+        customerContact: "+" + input.chatId.split("@")[0],
+      });
       emitNewMessage(conversation.id, { id, role: "customer", content: input.content });
       const [settings, knowledge, history] = await Promise.all([
         prisma.settings.findUnique({ where: { id: "default" } }),
@@ -191,13 +208,37 @@ Tudásbázis:\n${context || "Még nincs vállalati tudásbázis."}`;
       });
     }
 
+    if (body.action === "canSend") {
+      const parsed = z.object({ messageId: z.string().regex(/^wab-[a-f0-9]{64}$/) }).safeParse(body);
+      if (!parsed.success) return json({ error: "Hibás válaszazonosító." }, 400);
+      return json({ allowed: await canSendOwlyReply(parsed.data.messageId) });
+    }
+
+    if (body.action === "draft") {
+      const parsed = z.object({
+        messageId: z.string().regex(/^wab-[a-f0-9]{64}$/),
+        content: z.string().trim().min(1).max(6000),
+      }).safeParse(body);
+      if (!parsed.success) return json({ error: "Hibás választervezet." }, 400);
+      const original = await prisma.message.findUnique({ where: { id: parsed.data.messageId }, include: { conversation: true } });
+      if (!original || original.role !== "customer" || original.conversation.channel !== "whatsapp") return json({ error: "Az üzenet nem található." }, 404);
+      await saveWhatsAppDraft(parsed.data.messageId, parsed.data.content);
+      await processDueWhatsAppFallbacks().catch(() => {});
+      return json({ ok: true });
+    }
+
     if (body.action === "sent") {
       const sent = z.object({ messageId: z.string().regex(/^wab-[a-f0-9]{64}$/), content: z.string().trim().min(1).max(6000), whatsappId: z.string().max(250).optional() }).safeParse(body);
       if (!sent.success) return json({ error: "Hibás válasz." }, 400);
       const original = await prisma.message.findUnique({ where: { id: sent.data.messageId }, include: { conversation: true } });
       if (!original || original.role !== "customer" || original.conversation.channel !== "whatsapp") return json({ error: "Az üzenet nem található." }, 404);
+      const fallbackState = await prisma.whatsAppFallback.findUnique({ where: { inboundMessageId: original.id }, select: { status: true } });
+      if (fallbackState && ["fallback_sent", "failed", "uncertain"].includes(fallbackState.status)) {
+        return json({ error: "A tartalékküldés már elindult vagy az eredménye bizonytalan. Ellenőrizd a szolgáltató naplóját." }, 409);
+      }
       const id = messageId("reply:" + original.id);
       await prisma.message.upsert({ where: { id }, update: {}, create: { id, conversationId: original.conversationId, role: "assistant", content: sent.data.content, ...(sent.data.whatsappId ? { toolCalls: { whatsappMessageId: sent.data.whatsappId } } : {}) } });
+      await markWhatsAppReplySent(original.id, sent.data.whatsappId || "");
       await prisma.conversation.update({ where: { id: original.conversationId }, data: { updatedAt: new Date() } });
       emitNewMessage(original.conversationId, { id, role: "assistant", content: sent.data.content });
       return json({ ok: true });

@@ -449,7 +449,7 @@ function AISection({
 
   return (
     <div className="space-y-5">
-      <FormField label="AI Provider" description="Select which AI provider to use for generating responses.">
+      <FormField label="AI Provider" description="Ollama runs on your computer through the WhatsApp Chrome extension. Render cannot connect to Ollama running only on this computer.">
         <SelectInput
           value={data.aiProvider}
           onChange={(v) => {
@@ -460,15 +460,15 @@ function AISection({
             }
           }}
           options={[
+            { value: "ollama", label: "Ollama (Local, primary for WhatsApp extension)" },
             { value: "openai", label: "OpenAI" },
             { value: "claude", label: "Claude (Anthropic)" },
-            { value: "ollama", label: "Ollama (Local)" },
           ]}
         />
       </FormField>
       {data.aiProvider !== "openai" && (
         <p role="status" className="text-sm text-owly-danger">
-          {data.aiProvider === "ollama" ? "Az Ollama a Chrome-bővítményen keresztül, a saját gépeden válaszol. Itt válaszd ki a gépeden telepített modellt, majd a bővítményben kapcsold be a kapcsolatot. A mentés önmagában nem indítja el a böngészőkapcsolatot." : "A Claude ebben a verzióban még nincs bekötve a válaszadáshoz."}
+          {data.aiProvider === "ollama" ? "Az Ollama az elsődleges AI a helyi WhatsApp-bővítményhez. Válaszd ki a gépeden telepített modellt, majd a bővítményben kapcsold be a kapcsolatot. A Renderen futó szerver önmagában nem tudja elérni a gépeden futó Ollamát." : "A Claude ebben a verzióban még nincs bekötve a válaszadáshoz."}
         </p>
       )}
       <FormField label="Model" description="The specific model to use for AI responses.">
@@ -745,8 +745,8 @@ const defaultSettings: SettingsData = {
   welcomeMessage: "Hello! How can I help you today?",
   tone: "friendly",
   language: "auto",
-  aiProvider: "openai",
-  aiModel: "gpt-4o-mini",
+  aiProvider: "ollama",
+  aiModel: "llama3.2:3b",
   aiApiKey: "",
   maxTokens: 2048,
   temperature: 0.7,
@@ -867,7 +867,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <Header title="Settings" description="Configure your Owly instance" />
+      <Header title="Settings" description="Configure your Owly instance" actions={<a href="/settings/integrations" className="rounded-lg border border-owly-border px-4 py-2 text-sm">Integrations</a>} />
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto">
           {/* Tab navigation */}
