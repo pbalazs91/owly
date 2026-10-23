@@ -867,7 +867,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <Header title="Settings" description="Configure your Owly instance" />
+      <Header title="Settings" description="Configure your Owly instance" actions={<a href="/settings/integrations" className="rounded-lg border border-owly-border px-4 py-2 text-sm">Integrations</a>} />
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto">
           {/* Tab navigation */}

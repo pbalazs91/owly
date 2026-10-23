@@ -118,6 +118,7 @@ model TeamMember {
 // ==================== CONVERSATIONS ====================
 
 model Conversation {
+  rocketThreads   RocketThread[]
   id              String            @id @default(uuid())
   channel         String
   customerName    String            @default("Unknown")
@@ -327,6 +328,7 @@ model CannedResponse {
 // ==================== CUSTOMERS ====================
 
 model Customer {
+  rocketContacts RocketContact[]
   id            String         @id @default(uuid())
   name          String
   email         String         @default("")
@@ -346,6 +348,87 @@ model Customer {
   @@index([phone])
   @@index([whatsapp])
   @@index([lastContact])
+}
+
+// RocketSender is a single-organization integration. The organization scope is
+// supplied by the server, never by an inbound event or browser request.
+model RocketIntegration {
+  id                    String @id @default("default")
+  mode                  String @default("disabled")
+  accountId             String @default("")
+  trialPhone            String @default("")
+  compatibilityVerified Boolean @default(false)
+  aiSuggestions         Boolean @default(false)
+  updatedAt             DateTime @updatedAt
+}
+
+model RocketOutbound {
+  id              String @id
+  organizationId  String
+  accountId       String
+  phone           String
+  campaignId      String
+  sourceMessageId String
+  content         String @default("")
+  sentAt          DateTime
+  createdAt       DateTime @default(now())
+
+  @@unique([organizationId, accountId, sourceMessageId])
+  @@index([organizationId, accountId, phone, sentAt])
+}
+
+model RocketContact {
+  id             String @id @default(uuid())
+  organizationId String
+  phone          String
+  customerId     String
+  customer       Customer @relation(fields: [customerId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, phone])
+}
+
+model RocketThread {
+  id             String @id @default(uuid())
+  organizationId String
+  accountId      String
+  phone          String
+  externalId     String
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, accountId, phone, externalId])
+}
+
+model RocketImportEvent {
+  id                String @id
+  organizationId    String
+  accountId         String
+  externalEventId   String
+  externalMessageId String
+  payload           Json
+  status            String @default("pending")
+  attempts          Int @default(0)
+  nextAttemptAt     DateTime @default(now())
+  lockedAt          DateTime?
+  lastErrorCode     String @default("")
+  customerId        String?
+  conversationId    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([organizationId, accountId, externalEventId])
+  @@index([status, nextAttemptAt])
+}
+
+model RocketMessage {
+  id                String @id
+  organizationId    String
+  accountId         String
+  source            String @default("whatsapp-web")
+  externalMessageId String
+  messageId         String
+
+  @@unique([organizationId, accountId, source, externalMessageId])
 }
 
 model CustomerNote {

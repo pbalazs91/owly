@@ -44,6 +44,7 @@ vi.mock("next/headers", () => ({
 function createMockPrismaClient() {
   const modelMethods = {
     findUnique: vi.fn(),
+    findUniqueOrThrow: vi.fn(),
     findFirst: vi.fn(),
     findMany: vi.fn(),
     create: vi.fn(),
@@ -85,6 +86,12 @@ function createMockPrismaClient() {
     "internalNote",
     "campaign",
     "flow",
+    "rocketIntegration",
+    "rocketOutbound",
+    "rocketContact",
+    "rocketThread",
+    "rocketImportEvent",
+    "rocketMessage",
   ];
 
   const client: Record<string, unknown> = {
