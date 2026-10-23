@@ -89,6 +89,7 @@ function createMockPrismaClient() {
     "flow",
     "rocketIntegration",
     "notionIntegration",
+    "aiStudioIntegration",
     "rocketOutbound",
     "rocketContact",
     "rocketThread",

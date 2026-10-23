@@ -62,6 +62,12 @@ describe("Reply-gated RocketSender imports", () => {
     expect(db.customer.create).not.toHaveBeenCalled();
     expect(db.conversation.create).not.toHaveBeenCalled();
   });
+  it("saves the AI-suggestion test setting while keeping trial import scoped to the test phone", async () => {
+    db.rocketIntegration.findUnique.mockResolvedValue({ mode: "trial", accountId, trialPhone: phone, compatibilityVerified: false });
+    const response = await configure(req({ action: "configure", mode: "trial", accountId, trialPhone: phone, aiSuggestions: true }));
+    expect(response.status).toBe(200);
+    expect(db.rocketIntegration.upsert.mock.calls[0][0].create).toMatchObject({ mode: "trial", trialPhone: phone, aiSuggestions: true });
+  });
   it("rejects planned sends and refuses production activation before the real trial", async () => {
     expect((await outbound(req([{ status: "planned", accountId, phone, campaignId: "campaign1", sentAt: "2026-10-20T12:00:00Z" }]))).status).toBe(400);
     expect((await configure(req({ action: "configure", mode: "active", accountId, trialPhone: phone, compatibilityVerified: true }))).status).toBe(409);

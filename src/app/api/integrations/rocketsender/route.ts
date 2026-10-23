@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     const settingsAuth = await authorize(request);
     if (settingsAuth instanceof NextResponse) return settingsAuth;
     if (body.action === "configure") {
-      const parsed = z.object({ mode: z.enum(["disabled", "trial", "active"]), accountId: z.string().max(100), trialPhone: z.string().max(100).default("") }).safeParse(body);
+      const parsed = z.object({ mode: z.enum(["disabled", "trial", "active"]), accountId: z.string().max(100), trialPhone: z.string().max(100).default(""), aiSuggestions: z.boolean().default(false) }).safeParse(body);
       if (!parsed.success) return json({ error: "Hibás beállítás." }, 400);
       let accountId = "", trialPhone = "";
       try { accountId = normalizeRocketPhone(parsed.data.accountId); if (parsed.data.trialPhone) trialPhone = normalizeRocketPhone(parsed.data.trialPhone); }
@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       const previous = await prisma.rocketIntegration.findUnique({ where: { id: "default" } });
       const verified = !!previous?.compatibilityVerified && previous.accountId === accountId && previous.trialPhone === trialPhone;
       if (parsed.data.mode === "active" && !verified) return json({ error: "Előbb igazold a tesztválasz fogadását és a duplikációpróbát." }, 409);
-      const data = { mode: parsed.data.mode, accountId, trialPhone, compatibilityVerified: verified, aiSuggestions: false };
+      const data = { mode: parsed.data.mode, accountId, trialPhone, compatibilityVerified: verified, aiSuggestions: parsed.data.aiSuggestions };
       await prisma.rocketIntegration.upsert({ where: { id: "default" }, update: data, create: { id: "default", ...data } });
       return json({ ok: true });
     }

@@ -1,11 +1,11 @@
 "use client";
 import { useEffect, useState, type ReactNode } from "react";
-import { Activity, BookOpen, CheckCircle2, CircleDashed, MessageCircle, Send, Users, type LucideIcon } from "lucide-react";
+import { Activity, BookOpen, Check, CheckCircle2, CircleDashed, Copy, KeyRound, MessageCircle, Send, Users, type LucideIcon } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { parseRegistryFile } from "@/lib/rocketsender/registry-file";
 import { parseRocketContactFile } from "@/lib/rocketsender/contact-file";
 
-type Settings = { mode: string; accountId: string; trialPhone: string; compatibilityVerified: boolean };
+type Settings = { mode: string; accountId: string; trialPhone: string; compatibilityVerified: boolean; aiSuggestions: boolean };
 type Event = { id: string; status: string; attempts: number; lastErrorCode: string; createdAt: string; customerId?: string; conversationId?: string };
 type State = { settings: Settings; events: Event[]; dead: number; pending: number; sent: number };
 type ProviderState = {
@@ -23,6 +23,7 @@ type ProviderForm = {
 };
 type NotionSettings = { databaseId: string; enabled: boolean; hasToken: boolean; lastSyncAt: string | null; lastSyncError: string; syncOffset: number };
 type NotionActionResponse = { error?: string; settings?: NotionSettings; message?: string; created?: number; updated?: number; failed?: number; errors?: string[]; hasMore?: boolean; nextOffset?: number };
+type AiStudioState = { backendUrl: string; healthUrl: string; enabled: boolean; hasSecret: boolean; secretHint: string; lastUsedAt: string | null; whatsapp: { connected: boolean; status: string; processingEnabled: boolean; lastSeenAt: string | null } };
 const field = "mt-1 block w-full rounded-lg border border-owly-border bg-owly-bg px-3 py-2.5 text-sm text-owly-text placeholder:text-owly-text-light/70 transition-colors focus:border-owly-primary focus:outline-none focus:ring-2 focus:ring-owly-primary/20";
 const button = "inline-flex min-h-10 items-center justify-center rounded-lg border border-owly-border bg-owly-surface px-4 py-2 text-sm font-medium text-owly-text transition-colors hover:border-owly-primary/40 hover:bg-owly-primary-50 disabled:cursor-not-allowed disabled:opacity-50";
 const primaryButton = "inline-flex min-h-10 items-center justify-center rounded-lg bg-owly-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-owly-primary-dark disabled:cursor-not-allowed disabled:opacity-50";
@@ -58,7 +59,7 @@ const emptyProviderForm: ProviderForm = {
 
 export default function IntegrationsPage() {
   const [data, setData] = useState<State | null>(null);
-  const [form, setForm] = useState<Settings>({ mode: "disabled", accountId: "", trialPhone: "", compatibilityVerified: false });
+  const [form, setForm] = useState<Settings>({ mode: "disabled", accountId: "", trialPhone: "", compatibilityVerified: false, aiSuggestions: false });
   const [campaign, setCampaign] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -70,6 +71,9 @@ export default function IntegrationsPage() {
   const [fallbackEvents, setFallbackEvents] = useState<FallbackEvent[]>([]);
   const [notionSettings, setNotionSettings] = useState<NotionSettings | null>(null);
   const [notionForm, setNotionForm] = useState({ token: "", databaseId: "", enabled: false });
+  const [aiStudio, setAiStudio] = useState<AiStudioState | null>(null);
+  const [aiStudioSecret, setAiStudioSecret] = useState("");
+  const [copiedAiStudio, setCopiedAiStudio] = useState(false);
   async function refresh(initialize = false) {
     const response = await fetch("/api/integrations/rocketsender", { cache: "no-store" });
     const value = await response.json();
@@ -83,6 +87,11 @@ export default function IntegrationsPage() {
       if (!response.ok) throw new Error(value.error || "A Notion-beállítások nem tölthetők be.");
       setNotionSettings(value.settings);
       setNotionForm({ token: "", databaseId: value.settings.databaseId, enabled: value.settings.enabled });
+    }).catch(error => setError(error.message));
+    fetch("/api/integrations/ai-studio", { cache: "no-store" }).then(async response => {
+      const value = await response.json();
+      if (!response.ok) throw new Error(value.error?.message || value.error || "Az AI Studio-kapcsolat nem tölthető be.");
+      setAiStudio(value);
     }).catch(error => setError(error.message));
     fetch("/api/integrations/whatsapp/providers", { cache: "no-store" }).then(async response => {
       const value = await response.json();
@@ -180,16 +189,82 @@ export default function IntegrationsPage() {
     } catch (error) { setError(error instanceof Error ? error.message : "A Notion-művelet nem sikerült."); }
     finally { setBusy(false); }
   }
+  async function rotateAiStudioSecret() {
+    if (aiStudio?.hasSecret && !window.confirm("A régi kulcs azonnal érvényét veszti. Az új kulcsot az AI Studio Cloud Run környezeti változójában is cseréld le. Folytatod?")) return;
+    setBusy(true); setError(""); setNotice(""); setCopiedAiStudio(false);
+    try {
+      const response = await fetch("/api/integrations/ai-studio", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "rotate_secret" }) });
+      const value = await response.json();
+      if (!response.ok) throw new Error(value.error?.message || value.error || "A kulcs létrehozása nem sikerült.");
+      const { secret: generatedSecret, ...safeValue } = value;
+      setAiStudio(current => current ? { ...current, ...safeValue } : current);
+      setAiStudioSecret(generatedSecret);
+      setNotice("Az új kulcs elkészült. Másold át most az AI Studio Cloud Run OWLY_BACKEND_SECRET mezőjébe.");
+    } catch (error) { setError(error instanceof Error ? error.message : "A kulcs létrehozása nem sikerült."); }
+    finally { setBusy(false); }
+  }
+  async function revokeAiStudioSecret() {
+    if (!window.confirm("Visszavonod az AI Studio kulcsot? A Cloud Run alkalmazás utána nem fér hozzá az Owly állapotához.")) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/integrations/ai-studio", { method: "DELETE" });
+      const value = await response.json();
+      if (!response.ok) throw new Error(value.error?.message || value.error || "A kulcs visszavonása nem sikerült.");
+      setAiStudio(current => current ? { ...current, enabled: false, hasSecret: false, secretHint: "", lastUsedAt: null } : current);
+      setAiStudioSecret("");
+      setNotice("Az AI Studio-kulcs visszavonva.");
+    } catch (error) { setError(error instanceof Error ? error.message : "A kulcs visszavonása nem sikerült."); }
+    finally { setBusy(false); }
+  }
+  async function copyAiStudioEnvironment() {
+    if (!aiStudio || !aiStudioSecret) return;
+    try {
+      await navigator.clipboard.writeText(`OWLY_BACKEND_URL=${aiStudio.backendUrl}\nOWLY_BACKEND_SECRET=${aiStudioSecret}`);
+      setCopiedAiStudio(true);
+      setNotice("A két környezeti változó a vágólapra került. Csak az AI Studio Cloud Run titkos beállításai közé illeszd be.");
+    } catch { setError("A vágólap nem érhető el. Jelöld ki és másold ki külön a két értéket."); }
+  }
   return <>
     <Header title="Integrations" description="Külső rendszerek és importok" />
     <div className="max-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6">
       <div className="mx-auto max-w-6xl space-y-6">
-      <div className="grid gap-3 sm:grid-cols-3" aria-label="Integrációk állapota">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Integrációk állapota">
         <a href="#notion" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-owly-primary-50 text-owly-primary"><BookOpen className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">Notion CRM</span><span className="block text-xs text-owly-text-light">{notionSettings?.enabled ? "Szinkron bekapcsolva" : "Nincs bekapcsolva"}</span></span></a>
         <a href="#whatsapp-fallback" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><MessageCircle className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">WhatsApp fallback</span><span className="block text-xs text-owly-text-light">{providerState?.fallbackEnabled ? "Tartalék küldés aktív" : "Nincs bekapcsolva"}</span></span></a>
         <a href="#rocketsender" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Send className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">RocketSender</span><span className="block text-xs text-owly-text-light">{data?.settings.mode === "disabled" ? "Kikapcsolva" : data?.settings.compatibilityVerified ? "Próba ellenőrizve" : "Beállítás szükséges"}</span></span></a>
+        <a href="#ai-studio" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><KeyRound className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">AI Studio · Cloud Run</span><span className="block text-xs text-owly-text-light">{aiStudio?.hasSecret ? "Kulcs beállítva" : "Nincs összekötve"}</span></span></a>
       </div>
       {(notice || error) && <div role={error ? "alert" : "status"} className={`rounded-xl border px-4 py-3 text-sm ${error ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300" : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"}`}>{error || notice}</div>}
+      <IntegrationCard id="ai-studio" title="Google AI Studio · Cloud Run" description="Hitelesített Owly-kapcsolat az AI Studio háttérszolgáltatásához" status={aiStudio?.hasSecret ? "Kulcs beállítva" : "Nincs összekötve"} active={aiStudio?.hasSecret} icon={KeyRound}>
+        <div className="rounded-lg border border-owly-primary/20 bg-owly-primary-50/60 p-4 text-sm text-owly-text">
+          <p className="font-medium">Ezt a két értéket add meg az AI Studio Cloud Run környezeti változói között.</p>
+          <p className="mt-1 text-owly-text-light">Az Owly-cím a Renderen futó alkalmazásra mutat. A megosztott titok csak jogosultságot ad az alábbi állapot-ellenőrző API-hoz; az Owly nem kapja meg és nem tárolja a Google AI Studio kulcsát.</p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="block text-sm font-medium text-owly-text">OWLY_BACKEND_URL<input className={field} readOnly value={aiStudio?.backendUrl || ""} /></label>
+          <label className="block text-sm font-medium text-owly-text">Állapot-ellenőrző végpont<input className={field} readOnly value={aiStudio?.healthUrl || ""} /></label>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-owly-border bg-owly-bg p-3">
+          <span className={`rounded-full px-3 py-1 text-xs font-medium ${aiStudio?.whatsapp.connected ? "bg-emerald-50 text-emerald-700" : "bg-owly-surface text-owly-text-light"}`}>WhatsApp Web: {aiStudio?.whatsapp.connected ? "csatlakoztatva" : "nincs csatlakoztatva"}</span>
+          <span className={`rounded-full px-3 py-1 text-xs font-medium ${aiStudio?.whatsapp.processingEnabled ? "bg-emerald-50 text-emerald-700" : "bg-owly-surface text-owly-text-light"}`}>Üzenetfeldolgozás: {aiStudio?.whatsapp.processingEnabled ? "bekapcsolva" : "kikapcsolva"}</span>
+          {aiStudio?.lastUsedAt && <span className="text-xs text-owly-text-light">A Cloud Run legutóbb {new Date(aiStudio.lastUsedAt).toLocaleString("hu-HU")} időpontban ellenőrizte a kapcsolatot.</span>}
+        </div>
+        {aiStudioSecret && <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 dark:border-emerald-900/60 dark:bg-emerald-950/20">
+          <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">Másold át most a titkot az AI Studio Cloud Run beállításaiba. Az Owly újratöltés után már nem tudja megjeleníteni.</p>
+          <label className="block text-sm font-medium text-owly-text">OWLY_BACKEND_SECRET<input className={field} type="password" autoComplete="new-password" readOnly value={aiStudioSecret} onFocus={event => event.currentTarget.select()} /></label>
+          <button type="button" className={primaryButton} disabled={busy} onClick={copyAiStudioEnvironment}>{copiedAiStudio ? <Check className="mr-2 h-4 w-4" /> : <Copy className="mr-2 h-4 w-4" />}{copiedAiStudio ? "Környezeti változók másolva" : "OWLY_BACKEND_URL és titok másolása"}</button>
+        </div>}
+        {!aiStudioSecret && aiStudio?.hasSecret && <p className="text-sm text-owly-text-light">Titok elmentve · végződés: …{aiStudio.secretHint}. Ha az AI Studio még nem kapcsolódik, ellenőrizd, hogy a Cloud Run szolgáltatásban is ugyanez a titok szerepel.</p>}
+        <div className="flex flex-wrap gap-2">
+          <button type="button" className={primaryButton} disabled={busy || !aiStudio} onClick={rotateAiStudioSecret}>{aiStudio?.hasSecret ? "Megosztott titok cseréje" : "AI Studio-kulcs létrehozása"}</button>
+          {aiStudio?.hasSecret && <button type="button" className={button} disabled={busy} onClick={revokeAiStudioSecret}>Kapcsolat visszavonása</button>}
+        </div>
+        <div className="space-y-2 border-t border-owly-border pt-4 text-sm text-owly-text-light">
+          <p>Cloud Run beállítási lépések:</p>
+          <ol className="list-decimal space-y-1 pl-5"><li>Hozd létre vagy cseréld a kulcsot itt.</li><li>Az <code>OWLY_BACKEND_URL</code> és <code>OWLY_BACKEND_SECRET</code> értékét mentsd el az AI Studio Cloud Run titkos környezeti változói közé.</li><li>Indítsd újra a Cloud Run szolgáltatást; az állapot-ellenőrzéshez a fenti URL-t hívd <code>Authorization: Bearer &lt;OWLY_BACKEND_SECRET&gt;</code> fejlécével.</li></ol>
+          <p>Az állapot-végpont csak a kapcsolatot, a WhatsApp-bővítmény állapotát és az AI-szolgáltató beállítottságát jelzi. A Cloud Run Chromium-munkamenetét ez nem hozza létre és nem párosítja.</p>
+        </div>
+      </IntegrationCard>
       <IntegrationCard id="notion" title="Notion CRM" description="Ügyfelek és beszélgetések kézi szinkronizálása" status={notionSettings?.enabled ? "Szinkron aktív" : "Kikapcsolva"} active={notionSettings?.enabled} icon={BookOpen}>
         <p>Az Owly ügyfeleit és beszélgetéseit egy Notion-adatbázisba másolja. A beszélgetés sorába legfeljebb az utolsó 20 üzenet kerül, a szöveg legfeljebb 2000 karakter. A szinkron egyirányú és kézi indítású; az Owly ID alapján frissít, így az ismételt futtatás nem hoz létre új sort.</p>
         <label className="block text-sm font-medium text-owly-text">Notion integrációs API-kulcs<input className={field} type="password" autoComplete="new-password" value={notionForm.token} onChange={event => setNotionForm({ ...notionForm, token: event.target.value })} placeholder={notionSettings?.hasToken ? "Már elmentve · üresen hagyva változatlan" : "secret_… vagy ntn_…"} /></label>
@@ -233,9 +308,9 @@ export default function IntegrationsPage() {
         <label className="block text-sm font-medium text-owly-text">Saját WhatsApp-fiók telefonszáma<input className={field} type="tel" value={form.accountId} onChange={e => setForm({ ...form, accountId: e.target.value })} placeholder="+36…" /></label>
         <label className="block text-sm font-medium text-owly-text">Külön teszttelefon száma<input className={field} type="tel" value={form.trialPhone} onChange={e => setForm({ ...form, trialPhone: e.target.value })} placeholder="+36…" /></label>
         <label className="block text-sm font-medium text-owly-text">Import módja<select className={field} value={form.mode} onChange={e => setForm({ ...form, mode: e.target.value })}><option value="disabled">Kikapcsolva</option><option value="trial">Próba – csak a tesztszám válaszai</option><option value="active" disabled={!data?.settings.compatibilityVerified}>Bekapcsolva – nyilvántartott megkeresések válaszai</option></select></label>
-        <p><input type="checkbox" checked disabled readOnly /> Duplikációvédelem mindig bekapcsolva</p>
-        <p><input type="checkbox" checked={false} disabled readOnly /> AI-válaszjavaslat – ebben az első verzióban nincs bekapcsolva</p>
-        <p><input type="checkbox" checked={false} disabled readOnly /> Automatikus WhatsApp-üzenetküldés – letiltva</p>
+        <p><label className="flex items-center gap-2"><input type="checkbox" checked disabled readOnly /> Duplikációvédelem mindig bekapcsolva</label></p>
+        <p><label className="flex items-center gap-2"><input type="checkbox" checked={form.aiSuggestions} disabled={busy || form.mode === "disabled"} onChange={event => setForm({ ...form, aiSuggestions: event.target.checked })} /> AI-válaszjavaslatok engedélyezése</label></p>
+        <p><label className="flex items-center gap-2 text-owly-text-light"><input type="checkbox" checked={false} disabled readOnly /> Automatikus WhatsApp-üzenetküldés – a próbamódban sem támogatott</label></p>
         <button className={primaryButton} disabled={busy} onClick={() => submit({ action: "configure", ...form })}>Beállítások mentése</button>
       </IntegrationCard>
       <IntegrationCard id="rocketsender-contacts" title="RocketSender-kontaktok" description="Kontaktlista importálása és hozzájárult ügyfelek exportja" icon={Users}>
