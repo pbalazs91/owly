@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { MessageText } from "@/components/ui/message-text";
 import { cn } from "@/lib/utils";
 import { fetchList } from "@/lib/fetch-list";
 import {
@@ -266,7 +267,7 @@ export default function KnowledgeTestPage() {
                         : "bg-owly-surface border border-owly-border text-owly-text rounded-bl-sm"
                     )}
                   >
-                    <div className="whitespace-pre-wrap">{message.content}</div>
+                    <div className="whitespace-pre-wrap"><MessageText text={message.content} /></div>
                   </div>
 
                   {/* Sources section for assistant messages */}

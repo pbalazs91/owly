@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { MessageText } from "@/components/ui/message-text";
 import { ConversationTestChat } from "@/components/conversations/test-chat";
 import { fetchList } from "@/lib/fetch-list";
 import {
@@ -509,7 +510,7 @@ export default function ConversationsPage() {
                       return (
                         <div key={msg.id} className="flex justify-center">
                           <div className="px-3 py-1.5 bg-owly-surface border border-owly-border rounded-full text-xs text-owly-text-light">
-                            {msg.content}
+                            <MessageText text={msg.content} />
                           </div>
                         </div>
                       );
@@ -548,7 +549,7 @@ export default function ConversationsPage() {
                             </span>
                           </div>
                           <p className="text-sm whitespace-pre-wrap break-words">
-                            {msg.content}
+                            <MessageText text={msg.content} />
                           </p>
                           <p
                             className={cn(

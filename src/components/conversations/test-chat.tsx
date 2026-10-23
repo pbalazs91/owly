@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { FlaskConical, Loader2, Send, RotateCcw } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { MessageText } from "@/components/ui/message-text";
 
 type TestMessage = { role: "user" | "assistant"; content: string };
 
@@ -60,7 +61,7 @@ export function ConversationTestChat() {
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-owly-text-light"><span>{provider || "Beállítások betöltése…"}{knowledgeEntries !== null && ` · ${knowledgeEntries} tudásbázis-bejegyzés`}</span><button type="button" disabled={!!pending || messages.length === 0} onClick={() => { setMessages([]); setError(""); setKnowledgeEntries(null); }} className="inline-flex items-center gap-1 rounded-lg border border-owly-border px-2 py-1.5 disabled:opacity-50"><RotateCcw className="h-3.5 w-3.5" />Új teszt</button></div>
       <div role="log" aria-label="Tesztbeszélgetés üzenetei" aria-live="polite" className="my-4 h-[min(40dvh,360px)] space-y-3 overflow-y-auto rounded-xl border border-owly-border bg-owly-bg p-4">
         {messages.length === 0 && !pending && <div className="py-6 text-center text-sm text-owly-text-light"><FlaskConical className="mx-auto mb-2 h-7 w-7" /><p>Írj egy kérdést úgy, mintha ügyfél lennél.</p><button type="button" onClick={() => setText("Szia! Miben tudtok segíteni?")} className="mt-3 rounded-lg border border-owly-border bg-owly-surface px-3 py-2 text-owly-text">Szia! Miben tudtok segíteni?</button></div>}
-        {messages.map((message, index) => <div key={index} className={`max-w-[90%] rounded-xl px-4 py-3 ${message.role === "user" ? "ml-auto bg-owly-primary text-white" : "border border-owly-border bg-owly-surface text-owly-text"}`}><p className="mb-1 text-xs opacity-70">{message.role === "user" ? "Te, mint tesztügyfél" : "Owly AI"}</p><p className="whitespace-pre-wrap break-words text-sm">{message.content}</p></div>)}
+        {messages.map((message, index) => <div key={index} className={`max-w-[90%] rounded-xl px-4 py-3 ${message.role === "user" ? "ml-auto bg-owly-primary text-white" : "border border-owly-border bg-owly-surface text-owly-text"}`}><p className="mb-1 text-xs opacity-70">{message.role === "user" ? "Te, mint tesztügyfél" : "Owly AI"}</p><p className="whitespace-pre-wrap break-words text-sm"><MessageText text={message.content} /></p></div>)}
         {pending && <><div className="ml-auto max-w-[90%] rounded-xl bg-owly-primary px-4 py-3 text-sm text-white whitespace-pre-wrap break-words">{pending}</div><p role="status" className="flex items-center gap-2 text-sm text-owly-text-light"><Loader2 className="h-4 w-4 animate-spin" />Owly válaszol…</p></>}
         <div ref={end} />
       </div>
