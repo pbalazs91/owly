@@ -203,7 +203,7 @@ export async function snoozeConversation(
   await prisma.internalNote.create({
     data: {
       conversationId,
-      content: `Snoozed until ${snoozeUntil.toLocaleDateString()}: ${reason}`,
+      content: `Snoozed until ${snoozeUntil.toLocaleDateString("en-US")}: ${reason}`,
       authorName,
     },
   });

@@ -10,6 +10,7 @@ import {
   Phone,
   Mail,
   MessageCircle,
+  Plug,
   Save,
   Eye,
   EyeOff,
@@ -18,6 +19,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
+import { IntegrationsContent } from "@/components/settings/integrations-content";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -60,9 +62,10 @@ type SectionKey =
   | "phone"
   | "email"
   | "whatsapp";
+type SettingsTabKey = SectionKey | "integrations";
 
 interface TabDef {
-  key: SectionKey;
+  key: SettingsTabKey;
   label: string;
   icon: React.ElementType;
 }
@@ -78,10 +81,11 @@ const tabs: TabDef[] = [
   { key: "phone", label: "Phone (Twilio)", icon: Phone },
   { key: "email", label: "Email (SMTP/IMAP)", icon: Mail },
   { key: "whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { key: "integrations", label: "Integrations", icon: Plug },
 ];
 
 // Which fields belong to each section (used for partial saves)
-const sectionFields: Record<SectionKey, (keyof SettingsData)[]> = {
+const sectionFields: Partial<Record<SectionKey, (keyof SettingsData)[]>> = {
   general: ["businessName", "businessDesc", "welcomeMessage", "tone", "language"],
   ai: ["aiProvider", "aiModel", "aiApiKey", "maxTokens", "temperature"],
   voice: ["elevenLabsKey", "elevenLabsVoice"],
@@ -784,7 +788,7 @@ export default function SettingsPage() {
   const [data, setData] = useState<SettingsData>(defaultSettings);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [activeTab, setActiveTab] = useState<SectionKey>("general");
+  const [activeTab, setActiveTab] = useState<SettingsTabKey>("general");
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const addToast = useCallback((type: "success" | "error", message: string) => {
@@ -819,9 +823,10 @@ export default function SettingsPage() {
   };
 
   const saveSection = async () => {
+    if (activeTab === "integrations") return;
     setSaving(true);
     try {
-      const fields = sectionFields[activeTab];
+      const fields = sectionFields[activeTab] || [];
       const payload: Record<string, unknown> = {};
       for (const f of fields) {
         if ((SECRET_FIELDS as readonly string[]).includes(f) && data[f] === "***") continue;
@@ -856,13 +861,14 @@ export default function SettingsPage() {
     }
   };
 
-  const sectionRenderers: Record<SectionKey, React.ReactNode> = {
+  const sectionRenderers: Record<SettingsTabKey, React.ReactNode> = {
     general: <GeneralSection data={data} update={update} />,
     ai: <AISection data={data} update={update} />,
     voice: <VoiceSection data={data} update={update} />,
     phone: <PhoneSection data={data} update={update} />,
     email: <EmailSection data={data} update={update} />,
     whatsapp: <WhatsAppSection data={data} update={update} />,
+    integrations: <IntegrationsContent embedded />,
   };
 
   if (loading) {
@@ -878,7 +884,7 @@ export default function SettingsPage() {
 
   return (
     <>
-      <Header title="Settings" description="Configure your Owly instance" actions={<a href="/settings/integrations" className="rounded-lg border border-owly-border px-4 py-2 text-sm">Integrations</a>} />
+      <Header title="Settings" description="Configure your Owly instance" />
       <div className="flex-1 overflow-auto p-6">
         <div className="max-w-4xl mx-auto">
           {/* Tab navigation */}
@@ -923,12 +929,14 @@ export default function SettingsPage() {
                   "Set up email sending and receiving for support tickets."}
                 {activeTab === "whatsapp" &&
                   "Configure WhatsApp integration for messaging support."}
+                {activeTab === "integrations" &&
+                  "Manage external services, imports, and connected apps."}
               </p>
             </div>
 
             {sectionRenderers[activeTab]}
 
-            <SaveButton onClick={saveSection} saving={saving} />
+            {activeTab !== "integrations" && <SaveButton onClick={saveSection} saving={saving} />}
           </div>
         </div>
       </div>
