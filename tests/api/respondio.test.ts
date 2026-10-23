@@ -64,6 +64,13 @@ describe("respond.io credential redaction", () => {
     expect(body).not.toContain(settings.signingKey);
     expect(body).toContain('"hasSigningKey":true');
   });
+  it("uses the public Render URL behind a reverse proxy", async () => {
+    vi.stubEnv("RENDER_EXTERNAL_URL", "https://owlyapp.onrender.com");
+    db.channel.findUnique.mockResolvedValue({ config: {} });
+    const body = await (await providers(new NextRequest("http://0.0.0.0:10000/api/integrations/whatsapp/providers"))).json();
+    expect(body.webhooks.respondio).toBe("https://owlyapp.onrender.com/api/integrations/whatsapp/respondio/inbound");
+    vi.unstubAllEnvs();
+  });
   it("preserves saved credentials when fields are left empty", async () => {
     db.channel.findUnique.mockResolvedValue({ config: { providerSettings: { respondio: settings } } });
     const response = await PUT(new NextRequest("https://owly.test/api/integrations/whatsapp/providers", { method: "PUT", body: JSON.stringify({ fallbackEnabled: false, fallbackProvider: "respondio", infobip: { baseUrl: "", sender: "" }, peach: { flowId: "" }, respondio: { enabled: true, channelId: "42", apiKey: "", signingKey: "" } }) }));

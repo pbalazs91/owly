@@ -116,7 +116,11 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
       const value = await response.json();
       if (!response.ok) throw new Error(value.error || "A WhatsApp-szolgáltatók nem tölthetők be.");
       setProviderState(value.settings);
-      setProviderWebhooks(value.webhooks);
+      setProviderWebhooks({
+        infobip: new URL("/api/integrations/whatsapp/infobip/inbound", window.location.origin).toString(),
+        peach: new URL("/api/integrations/whatsapp/peach/inbound", window.location.origin).toString(),
+        respondio: new URL("/api/integrations/whatsapp/respondio/inbound", window.location.origin).toString(),
+      });
       setFallbackEvents(value.fallbacks || []);
       setProviderForm({
         ...emptyProviderForm,

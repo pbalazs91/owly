@@ -59,13 +59,14 @@ export async function GET(request: NextRequest) {
     take: 20,
     select: { id: true, customerContact: true, fallbackProvider: true, status: true, dueAt: true, createdAt: true, lastErrorCode: true },
   });
+  const publicOrigin = process.env.RENDER_EXTERNAL_URL || process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
   return NextResponse.json({
     settings: safeView(config),
     fallbacks,
     webhooks: {
-      respondio: new URL("/api/integrations/whatsapp/respondio/inbound", request.nextUrl.origin).toString(),
-      infobip: new URL("/api/integrations/whatsapp/infobip/inbound", request.nextUrl.origin).toString(),
-      peach: new URL("/api/integrations/whatsapp/peach/inbound", request.nextUrl.origin).toString(),
+      respondio: new URL("/api/integrations/whatsapp/respondio/inbound", publicOrigin).toString(),
+      infobip: new URL("/api/integrations/whatsapp/infobip/inbound", publicOrigin).toString(),
+      peach: new URL("/api/integrations/whatsapp/peach/inbound", publicOrigin).toString(),
     },
   }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -121,5 +122,6 @@ export async function PUT(request: NextRequest) {
     update: { config },
     create: { type: "whatsapp", config, isActive: false, status: "disconnected" },
   });
+
   return NextResponse.json({ ok: true, settings: safeView(config) }, { headers: { "Cache-Control": "no-store" } });
 }
