@@ -24,6 +24,7 @@ type ProviderForm = {
 type NotionSettings = { databaseId: string; enabled: boolean; hasToken: boolean; lastSyncAt: string | null; lastSyncError: string; syncOffset: number };
 type NotionActionResponse = { error?: string; settings?: NotionSettings; message?: string; created?: number; updated?: number; failed?: number; errors?: string[]; hasMore?: boolean; nextOffset?: number };
 type AiStudioState = { backendUrl: string; healthUrl: string; enabled: boolean; hasSecret: boolean; secretHint: string; lastUsedAt: string | null; whatsapp: { connected: boolean; status: string; processingEnabled: boolean; lastSeenAt: string | null } };
+type IntegrationStatusTone = "active" | "attention" | "inactive" | "loading";
 const field = "mt-1 block w-full rounded-lg border border-owly-border bg-owly-bg px-3 py-2.5 text-sm text-owly-text placeholder:text-owly-text-light/70 transition-colors focus:border-owly-primary focus:outline-none focus:ring-2 focus:ring-owly-primary/20";
 const button = "inline-flex min-h-10 items-center justify-center rounded-lg border border-owly-border bg-owly-surface px-4 py-2 text-sm font-medium text-owly-text transition-colors hover:border-owly-primary/40 hover:bg-owly-primary-50 disabled:cursor-not-allowed disabled:opacity-50";
 const primaryButton = "inline-flex min-h-10 items-center justify-center rounded-lg bg-owly-primary px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-owly-primary-dark disabled:cursor-not-allowed disabled:opacity-50";
@@ -49,6 +50,20 @@ function IntegrationCard({ id, title, description, status, active = false, icon:
     </div>
     <div className="space-y-5 p-5 sm:p-6">{children}</div>
   </section>;
+}
+
+function IntegrationStatus({ tone, label }: { tone: IntegrationStatusTone; label: string }) {
+  const lamp = {
+    active: "bg-emerald-500 shadow-[0_0_0_3px_rgba(16,185,129,0.14)]",
+    attention: "bg-amber-500 shadow-[0_0_0_3px_rgba(245,158,11,0.14)]",
+    inactive: "bg-slate-400 shadow-[0_0_0_3px_rgba(148,163,184,0.14)]",
+    loading: "bg-sky-500 animate-pulse shadow-[0_0_0_3px_rgba(14,165,233,0.14)]",
+  }[tone];
+
+  return <span className="mt-0.5 flex items-center gap-2 text-xs text-owly-text-light">
+    <span aria-hidden="true" className={`h-2.5 w-2.5 shrink-0 rounded-full ${lamp}`} />
+    <span>{label}</span>
+  </span>;
 }
 const emptyProviderForm: ProviderForm = {
   fallbackEnabled: false,
@@ -88,11 +103,12 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
       setNotionSettings(value.settings);
       setNotionForm({ token: "", databaseId: value.settings.databaseId, enabled: value.settings.enabled });
     }).catch(error => setError(error.message));
-    fetch("/api/integrations/ai-studio", { cache: "no-store" }).then(async response => {
+    const refreshAiStudio = () => fetch("/api/integrations/ai-studio", { cache: "no-store" }).then(async response => {
       const value = await response.json();
       if (!response.ok) throw new Error(value.error?.message || value.error || "Az AI Studio-kapcsolat nem tölthető be.");
       setAiStudio(value);
-    }).catch(error => setError(error.message));
+    });
+    refreshAiStudio().catch(error => setError(error.message));
     fetch("/api/integrations/whatsapp/providers", { cache: "no-store" }).then(async response => {
       const value = await response.json();
       if (!response.ok) throw new Error(value.error || "A WhatsApp-szolgáltatók nem tölthetők be.");
@@ -113,7 +129,8 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
         if (Array.isArray(value.fallbacks)) setFallbackEvents(value.fallbacks);
       }).catch(() => {});
     }, 15000);
-    return () => { clearInterval(timer); clearInterval(providerTimer); };
+    const aiStudioTimer = setInterval(() => refreshAiStudio().catch(() => {}), 15000);
+    return () => { clearInterval(timer); clearInterval(providerTimer); clearInterval(aiStudioTimer); };
   }, []);
   async function submit(body: unknown, path = "", message = "Mentve.") {
     setBusy(true); setError(""); setNotice("");
@@ -224,15 +241,16 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
       setNotice("A két környezeti változó a vágólapra került. Csak az AI Studio Cloud Run titkos beállításai közé illeszd be.");
     } catch { setError("A vágólap nem érhető el. Jelöld ki és másold ki külön a két értéket."); }
   }
+  const aiStudioRecentlySeen = !!aiStudio?.lastUsedAt && Date.now() - Date.parse(aiStudio.lastUsedAt) < 90000;
   return <>
     {!embedded && <Header title="Integrations" description="Külső rendszerek és importok" />}
     <div className={embedded ? "" : "max-h-[calc(100vh-4rem)] overflow-auto p-4 sm:p-6"}>
       <div className="mx-auto max-w-6xl space-y-6">
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Integrációk állapota">
-        <a href="#notion" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-owly-primary-50 text-owly-primary"><BookOpen className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">Notion CRM</span><span className="block text-xs text-owly-text-light">{notionSettings?.enabled ? "Szinkron bekapcsolva" : "Nincs bekapcsolva"}</span></span></a>
-        <a href="#whatsapp-fallback" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><MessageCircle className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">WhatsApp fallback</span><span className="block text-xs text-owly-text-light">{providerState?.fallbackEnabled ? "Tartalék küldés aktív" : "Nincs bekapcsolva"}</span></span></a>
-        <a href="#rocketsender" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Send className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">RocketSender</span><span className="block text-xs text-owly-text-light">{data?.settings.mode === "disabled" ? "Kikapcsolva" : data?.settings.compatibilityVerified ? "Próba ellenőrizve" : "Beállítás szükséges"}</span></span></a>
-        <a href="#ai-studio" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><KeyRound className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">AI Studio · Cloud Run</span><span className="block text-xs text-owly-text-light">{aiStudio?.hasSecret ? "Kulcs beállítva" : "Nincs összekötve"}</span></span></a>
+        <a href="#notion" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-owly-primary-50 text-owly-primary"><BookOpen className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">Notion CRM</span><IntegrationStatus tone={notionSettings ? notionSettings.enabled ? "active" : "inactive" : "loading"} label={notionSettings ? notionSettings.enabled ? "Szinkron bekapcsolva" : "Nincs bekapcsolva" : "Állapot ellenőrzése…"} /></span></a>
+        <a href="#whatsapp-fallback" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><MessageCircle className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">WhatsApp fallback</span><IntegrationStatus tone={providerState ? providerState.fallbackEnabled ? "active" : "inactive" : "loading"} label={providerState ? providerState.fallbackEnabled ? "Tartalék küldés aktív" : "Nincs bekapcsolva" : "Állapot ellenőrzése…"} /></span></a>
+        <a href="#rocketsender" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Send className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">RocketSender</span><IntegrationStatus tone={!data ? "loading" : data.settings.mode === "disabled" ? "inactive" : data.settings.compatibilityVerified ? "active" : "attention"} label={!data ? "Állapot ellenőrzése…" : data.settings.mode === "disabled" ? "Kikapcsolva" : data.settings.compatibilityVerified ? "Próba ellenőrizve" : "Beállítás szükséges"} /></span></a>
+        <a href="#ai-studio" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><KeyRound className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">AI Studio · Cloud Run</span><IntegrationStatus tone={!aiStudio ? "loading" : !aiStudio.hasSecret ? "inactive" : aiStudioRecentlySeen ? "active" : "attention"} label={!aiStudio ? "Állapot ellenőrzése…" : !aiStudio.hasSecret ? "Nincs összekötve" : aiStudioRecentlySeen ? "Kapcsolat aktív" : "Kulcs beállítva · nincs aktív kapcsolat"} /></span></a>
       </div>
       {(notice || error) && <div role={error ? "alert" : "status"} className={`rounded-xl border px-4 py-3 text-sm ${error ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300" : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"}`}>{error || notice}</div>}
       <IntegrationCard id="ai-studio" title="Google AI Studio · Cloud Run" description="Hitelesített Owly-kapcsolat az AI Studio háttérszolgáltatásához" status={aiStudio?.hasSecret ? "Kulcs beállítva" : "Nincs összekötve"} active={aiStudio?.hasSecret} icon={KeyRound}>
