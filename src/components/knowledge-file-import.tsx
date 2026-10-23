@@ -4,12 +4,20 @@ import { MAX_IMPORT_BYTES } from "@/lib/knowledge-import-limits";
 
 export function KnowledgeFileImport({ onImported }: { onImported: (value: { title: string; content: string }) => void }) {
   const input = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  async function upload(file?: File) {
-    if (!file) return;
+  function selectFile(file?: File) {
     setError("");
+    setSelectedFile(null);
+    if (!file) return;
     if (file.size > MAX_IMPORT_BYTES) { setError("A fájl legfeljebb 25 MB lehet."); return; }
+    setSelectedFile(file);
+  }
+
+  async function upload() {
+    const file = selectedFile;
+    if (!file) return;
     setBusy(true);
     try {
       const form = new FormData(); form.set("file", file);
@@ -17,12 +25,20 @@ export function KnowledgeFileImport({ onImported }: { onImported: (value: { titl
       const value = await response.json();
       if (!response.ok) throw new Error(typeof value.error === "string" ? value.error : "A fájl nem olvasható.");
       onImported(value);
+      setSelectedFile(null);
+      if (input.current) input.current.value = "";
     } catch (error) { setError(error instanceof Error ? error.message : "A feltöltés nem sikerült."); }
-    finally { setBusy(false); if (input.current) input.current.value = ""; }
+    finally { setBusy(false); }
   }
   return <div className="rounded-lg border border-owly-border p-3 space-y-2">
-    <input ref={input} aria-label="Tudásbázis-fájl kiválasztása" type="file" accept=".pdf,.txt,.md,.csv" disabled={busy} onChange={(event) => upload(event.target.files?.[0])} className="text-sm max-w-full" />
-    <p className="text-xs text-owly-text-light">PDF, TXT, Markdown, CSV · legfeljebb 25 MB, PDF-nél 250 oldal. Legfeljebb 100 000 karakter nyerhető ki; lent ellenőrizheted és szerkesztheted, mentéskor pedig 10 000 karakteres részekre bontjuk. Az eredeti fájlt nem tároljuk.</p>
+    <input ref={input} aria-label="Tudásbázis-fájl kiválasztása" type="file" accept=".pdf,.txt,.md,.csv" disabled={busy} onChange={(event) => selectFile(event.target.files?.[0])} className="text-sm max-w-full" />
+    <p className="text-xs text-owly-text-light">PDF, TXT, Markdown, CSV · legfeljebb 25 MB, PDF-nél 250 oldal. Legfeljebb 100 000 karakter nyerhető ki; a fájl beolvasása csak az Importálás gombbal indul. A szöveget ellenőrizheted és szerkesztheted, majd mentéskor 10 000 karakteres részekre bontjuk.</p>
+    {selectedFile && <div className="flex flex-wrap items-center justify-between gap-2">
+      <span className="text-sm text-owly-text-light">{selectedFile.name}</span>
+      <button type="button" onClick={() => void upload()} disabled={busy} className="rounded-lg bg-owly-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-owly-primary-dark disabled:opacity-50">
+        {busy ? "Importálás…" : "Fájl importálása"}
+      </button>
+    </div>}
     {busy && <p role="status" className="text-sm">Fájl beolvasása…</p>}
     {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
   </div>;
