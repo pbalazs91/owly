@@ -1,3 +1,4 @@
+import { parseRespondioInbound, verifyRespondioSignature } from "@/lib/channels/respondio";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -5,7 +6,7 @@ import { emitNewMessage } from "@/lib/realtime";
 import { resolveCustomer } from "@/lib/customer-resolver";
 import { parseInfobipInbound, parsePeachReply } from "@/lib/channels/whatsapp-providers";
 
-type Provider = "infobip" | "peach";
+type Provider = "infobip" | "peach" | "respondio";
 type Context = { params: Promise<{ provider: string }> };
 
 function equalSecret(actual: string, expected: string) {
@@ -19,23 +20,34 @@ const stableId = (provider: string, externalId: string) =>
 
 export async function POST(request: NextRequest, context: Context) {
   const { provider: rawProvider } = await context.params;
-  if (rawProvider !== "infobip" && rawProvider !== "peach") {
+  if (rawProvider !== "infobip" && rawProvider !== "peach" && rawProvider !== "respondio") {
     return NextResponse.json({ error: "Ismeretlen szolgáltató." }, { status: 404 });
   }
   const provider = rawProvider as Provider;
   const channel = await prisma.channel.findUnique({ where: { type: "whatsapp" } });
   const config = (channel?.config || {}) as Record<string, unknown>;
   const providers = (config.providerSettings || {}) as Record<string, Record<string, unknown>>;
-  const secret = typeof providers[provider]?.webhookToken === "string" ? providers[provider].webhookToken as string : "";
+  const settings = providers[provider] || {};
+  if (provider === "respondio" && settings.enabled !== true) return NextResponse.json({ error: "A respond.io integráció ki van kapcsolva." }, { status: 503 });
+  const secretField = provider === "respondio" ? "signingKey" : "webhookToken";
+  const secret = typeof settings[secretField] === "string" ? settings[secretField] as string : "";
   if (!secret) return NextResponse.json({ error: "A webhook hitelesítése nincs beállítva." }, { status: 503 });
-  const authorization = request.headers.get("authorization") || "";
-  const supplied = request.headers.get("x-owly-webhook-token") ||
-    (authorization.startsWith("Bearer ") ? authorization.slice(7) : "");
-  if (!equalSecret(supplied, secret)) return NextResponse.json({ error: "Érvénytelen webhook-hitelesítés." }, { status: 401 });
-
   let payload: unknown;
-  try { payload = await request.json(); } catch { return NextResponse.json({ error: "Hibás JSON." }, { status: 400 }); }
-  const events = provider === "infobip" ? parseInfobipInbound(payload) : parsePeachReply(payload);
+  if (provider !== "respondio") {
+    const authorization = request.headers.get("authorization") || "";
+    const supplied = request.headers.get("x-owly-webhook-token") || (authorization.startsWith("Bearer ") ? authorization.slice(7) : "");
+    if (!equalSecret(supplied, secret)) return NextResponse.json({ error: "Érvénytelen webhook-hitelesítés." }, { status: 401 });
+  }
+  try {
+    const body = await request.text();
+    if (Buffer.byteLength(body, "utf8") > 256000) return NextResponse.json({ error: "Túl nagy webhook." }, { status: 413 });
+    payload = JSON.parse(body);
+  } catch { return NextResponse.json({ error: "Hibás JSON." }, { status: 400 }); }
+  if (provider === "respondio" && !verifyRespondioSignature(payload, request.headers.get("x-webhook-signature") || "", secret)) {
+    return NextResponse.json({ error: "Érvénytelen webhook-aláírás." }, { status: 401 });
+  }
+  const events = provider === "infobip" ? parseInfobipInbound(payload) : provider === "peach" ? parsePeachReply(payload)
+    : parseRespondioInbound(payload, typeof settings.channelId === "string" ? settings.channelId : "");
   if (events.length === 0) return NextResponse.json({ accepted: true, imported: 0 });
 
   let imported = 0;

@@ -1,9 +1,10 @@
+import { sendRespondioText } from "@/lib/channels/respondio";
 import { prisma } from "@/lib/prisma";
 import { sendInfobipText, sendPeachAppMessage, type ProviderSendResult } from "@/lib/channels/whatsapp-providers";
 
 const FALLBACK_DELAY_MS = 15 * 60 * 1000;
 
-type Provider = "infobip" | "peach";
+type Provider = "infobip" | "peach" | "respondio";
 type WhatsAppConfig = Record<string, unknown> & {
   providerSettings?: Record<string, unknown>;
   fallbackProvider?: unknown;
@@ -11,7 +12,7 @@ type WhatsAppConfig = Record<string, unknown> & {
 };
 
 function isProvider(value: unknown): value is Provider {
-  return value === "infobip" || value === "peach";
+  return value === "infobip" || value === "peach" || value === "respondio";
 }
 
 export async function scheduleWhatsAppFallback(input: {
@@ -96,6 +97,12 @@ export async function processDueWhatsAppFallbacks(now = new Date(), limit = 10) 
           apiKey: typeof value.apiKey === "string" ? value.apiKey : "",
           flowId: typeof value.flowId === "string" ? value.flowId : "",
         }, item.customerContact, item.replyContent);
+      } else if (item.fallbackProvider === "respondio") {
+        const value = settings.respondio || {};
+        result = value.enabled === true ? await sendRespondioText({
+          apiKey: typeof value.apiKey === "string" ? value.apiKey : "",
+          channelId: typeof value.channelId === "string" ? value.channelId : "",
+        }, item.customerContact, item.replyContent) : { outcome: "rejected", code: "provider_disabled" };
       } else {
         result = { outcome: "rejected", code: "provider_not_supported" };
       }

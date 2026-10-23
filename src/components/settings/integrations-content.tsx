@@ -10,15 +10,17 @@ type Event = { id: string; status: string; attempts: number; lastErrorCode: stri
 type State = { settings: Settings; events: Event[]; dead: number; pending: number; sent: number };
 type ProviderState = {
   fallbackEnabled: boolean;
-  fallbackProvider: "infobip" | "peach";
+  fallbackProvider: "infobip" | "peach" | "respondio";
   infobip: { baseUrl: string; sender: string; hasApiKey: boolean; hasWebhookToken: boolean };
+  respondio: { enabled: boolean; channelId: string; hasApiKey: boolean; hasSigningKey: boolean };
   peach: { flowId: string; hasApiKey: boolean; hasWebhookToken: boolean };
 };
 type FallbackEvent = { id: string; customerContact: string; fallbackProvider: string; status: string; dueAt: string; createdAt: string; lastErrorCode: string };
 type ProviderForm = {
   fallbackEnabled: boolean;
-  fallbackProvider: "infobip" | "peach";
+  fallbackProvider: "infobip" | "peach" | "respondio";
   infobip: { baseUrl: string; sender: string; apiKey: string; webhookToken: string };
+  respondio: { enabled: boolean; channelId: string; apiKey: string; signingKey: string };
   peach: { flowId: string; apiKey: string; webhookToken: string };
 };
 type NotionSettings = { databaseId: string; enabled: boolean; hasToken: boolean; lastSyncAt: string | null; lastSyncError: string; syncOffset: number };
@@ -70,6 +72,7 @@ const emptyProviderForm: ProviderForm = {
   fallbackProvider: "infobip",
   infobip: { baseUrl: "", sender: "", apiKey: "", webhookToken: "" },
   peach: { flowId: "", apiKey: "", webhookToken: "" },
+  respondio: { enabled: false, channelId: "", apiKey: "", signingKey: "" },
 };
 
 export function IntegrationsContent({ embedded = false }: { embedded?: boolean }) {
@@ -82,7 +85,7 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
   const [notice, setNotice] = useState("");
   const [providerForm, setProviderForm] = useState<ProviderForm>(emptyProviderForm);
   const [providerState, setProviderState] = useState<ProviderState | null>(null);
-  const [providerWebhooks, setProviderWebhooks] = useState<{ infobip: string; peach: string } | null>(null);
+  const [providerWebhooks, setProviderWebhooks] = useState<{ infobip: string; peach: string; respondio: string } | null>(null);
   const [fallbackEvents, setFallbackEvents] = useState<FallbackEvent[]>([]);
   const [notionSettings, setNotionSettings] = useState<NotionSettings | null>(null);
   const [notionForm, setNotionForm] = useState({ token: "", databaseId: "", enabled: false });
@@ -121,6 +124,7 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
         fallbackProvider: value.settings.fallbackProvider,
         infobip: { ...emptyProviderForm.infobip, baseUrl: value.settings.infobip.baseUrl, sender: value.settings.infobip.sender },
         peach: { ...emptyProviderForm.peach, flowId: value.settings.peach.flowId },
+        respondio: { ...emptyProviderForm.respondio, enabled: value.settings.respondio?.enabled === true, channelId: value.settings.respondio?.channelId || "" },
       });
     }).catch(error => setError(error.message));
     const timer = setInterval(() => refresh().catch(error => setError(error.message)), 15000);
@@ -168,7 +172,7 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "A szolgáltatói beállítások mentése sikertelen.");
       setProviderState(result.settings);
-      setProviderForm(current => ({ ...current, infobip: { ...current.infobip, apiKey: "", webhookToken: "" }, peach: { ...current.peach, apiKey: "", webhookToken: "" } }));
+      setProviderForm(current => ({ ...current, respondio: { ...current.respondio, apiKey: "", signingKey: "" }, infobip: { ...current.infobip, apiKey: "", webhookToken: "" }, peach: { ...current.peach, apiKey: "", webhookToken: "" } }));
       setNotice("A WhatsApp-szolgáltatók beállításai elmentve.");
     } catch (error) { setError(error instanceof Error ? error.message : "Hiba történt."); }
     finally { setBusy(false); }
@@ -249,7 +253,7 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Integrációk állapota">
         <a href="#notion" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-owly-primary-50 text-owly-primary"><BookOpen className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">Notion CRM</span><IntegrationStatus tone={notionSettings ? notionSettings.enabled ? "active" : "inactive" : "loading"} label={notionSettings ? notionSettings.enabled ? "Szinkron bekapcsolva" : "Nincs bekapcsolva" : "Állapot ellenőrzése…"} /></span></a>
         <a href="#whatsapp-fallback" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><MessageCircle className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">WhatsApp fallback</span><IntegrationStatus tone={providerState ? providerState.fallbackEnabled ? "active" : "inactive" : "loading"} label={providerState ? providerState.fallbackEnabled ? "Tartalék küldés aktív" : "Nincs bekapcsolva" : "Állapot ellenőrzése…"} /></span></a>
-        <a href="#rocketsender" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Send className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">RocketSender</span><IntegrationStatus tone={!data ? "loading" : data.settings.mode === "disabled" ? "inactive" : data.settings.compatibilityVerified ? "active" : "attention"} label={!data ? "Állapot ellenőrzése…" : data.settings.mode === "disabled" ? "Kikapcsolva" : data.settings.compatibilityVerified ? "Próba ellenőrizve" : "Beállítás szükséges"} /></span></a>
+        <a href="#respondio" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-50 text-emerald-600"><MessageCircle className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">respond.io</span><IntegrationStatus tone={!providerState ? "loading" : providerState.respondio?.enabled ? "attention" : "inactive"} label={!providerState ? "Állapot ellenőrzése…" : providerState.respondio?.enabled ? "Engedélyezve · próba szükséges" : "Kikapcsolva"} /></span></a>        <a href="#rocketsender" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><Send className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">RocketSender</span><IntegrationStatus tone={!data ? "loading" : data.settings.mode === "disabled" ? "inactive" : data.settings.compatibilityVerified ? "active" : "attention"} label={!data ? "Állapot ellenőrzése…" : data.settings.mode === "disabled" ? "Kikapcsolva" : data.settings.compatibilityVerified ? "Próba ellenőrizve" : "Beállítás szükséges"} /></span></a>
         <a href="#ai-studio" className="flex items-center gap-3 rounded-xl border border-owly-border bg-owly-surface p-4 transition-colors hover:border-owly-primary/40 hover:shadow-sm"><span className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-50 text-violet-600"><KeyRound className="h-5 w-5" /></span><span className="min-w-0"><span className="block text-sm font-semibold">AI Studio · Cloud Run</span><IntegrationStatus tone={!aiStudio ? "loading" : !aiStudio.hasSecret ? "inactive" : aiStudioRecentlySeen ? "active" : "attention"} label={!aiStudio ? "Állapot ellenőrzése…" : !aiStudio.hasSecret ? "Nincs összekötve" : aiStudioRecentlySeen ? "Kapcsolat aktív" : "Kulcs beállítva · nincs aktív kapcsolat"} /></span></a>
       </div>
       {(notice || error) && <div role={error ? "alert" : "status"} className={`rounded-xl border px-4 py-3 text-sm ${error ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300" : "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"}`}>{error || notice}</div>}
@@ -293,10 +297,10 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
         {notionSettings?.lastSyncAt && <p className="text-sm text-owly-text-light">Utolsó szinkron: {new Date(notionSettings.lastSyncAt).toLocaleString("en-US")}</p>}
         {notionSettings?.lastSyncError && <p className="text-sm text-red-700">Legutóbbi hiba: {notionSettings.lastSyncError}</p>}
       </IntegrationCard>
-      <IntegrationCard id="whatsapp-fallback" title="WhatsApp tartalék szolgáltatók" description="Infobip és Peach üzenetküldés biztonságos tartalékként" status={providerState?.fallbackEnabled ? "Tartalék aktív" : "Kikapcsolva"} active={providerState?.fallbackEnabled} icon={MessageCircle}>
+      <IntegrationCard id="whatsapp-fallback" title="WhatsApp tartalék szolgáltatók" description="Infobip, Peach és respond.io küldés és válaszfogadás" status={providerState?.fallbackEnabled ? "Tartalék aktív" : "Kikapcsolva"} active={providerState?.fallbackEnabled} icon={MessageCircle}>
         <p>Az Owly Chrome-bővítményben elkészült választervezet 15 percig vár. Ha addig nem igazolódik a WhatsApp-küldés, a kiválasztott szolgáltató ugyanazt a tervezetet küldi el. Bizonytalan küldési eredménynél nem próbálkozik újra.</p>
         <label className="flex items-center gap-2"><input type="checkbox" checked={providerForm.fallbackEnabled} onChange={e => setProviderForm({ ...providerForm, fallbackEnabled: e.target.checked })} /> Tartalék küldés bekapcsolása</label>
-        <label className="block text-sm font-medium text-owly-text">Tartalék szolgáltató<select className={field} value={providerForm.fallbackProvider} onChange={e => setProviderForm({ ...providerForm, fallbackProvider: e.target.value as "infobip" | "peach" })}><option value="infobip">Infobip</option><option value="peach">Peach</option></select></label>
+        <label className="block text-sm font-medium text-owly-text">Tartalék szolgáltató<select className={field} value={providerForm.fallbackProvider} onChange={e => setProviderForm({ ...providerForm, fallbackProvider: e.target.value as "infobip" | "peach" | "respondio" })}><option value="infobip">Infobip</option><option value="peach">Peach</option><option value="respondio">respond.io</option></select></label>
         <div className="grid md:grid-cols-2 gap-5">
           <div className="space-y-3 rounded-lg border border-owly-border p-4">
             <h3 className="font-medium">Infobip · teljes szöveges WhatsApp</h3>
@@ -314,6 +318,19 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
             <p className="text-xs text-owly-text-light">A Peach API egy beállított App-folyamatot indít. A folyamatban a message változót kell használni.</p>
             {providerWebhooks && <p className="break-all text-xs text-owly-text-light">Bejövő webhook: {providerWebhooks.peach} · fejléc: X-Owly-Webhook-Token</p>}
           </div>
+        </div>
+        <div id="respondio" className="scroll-mt-6 space-y-3 rounded-lg border border-owly-border p-4">
+          <h3 className="font-medium">respond.io · közös inbox és tartalék küldés</h3>
+          <IntegrationStatus tone={providerState?.respondio?.enabled ? "attention" : "inactive"} label={providerState?.respondio?.enabled ? "Engedélyezve · élő kapcsolat még nincs igazolva" : "Kikapcsolva"} />
+          <p className="text-sm text-owly-text-light">A kijelölt WhatsApp-csatorna új szöveges válaszai az Owly Conversations oldalára kerülnek. Onnan ugyanazon a respond.io csatornán válaszolhatsz. A meglévő kontaktot a respond.io rendszerében is létre kell hozni; előzményeket ez a kapcsolat nem tölt vissza.</p>
+          <label className="flex items-center gap-2"><input type="checkbox" checked={providerForm.respondio.enabled} onChange={e => setProviderForm({ ...providerForm, respondio: { ...providerForm.respondio, enabled: e.target.checked } })} /> respond.io küldés és válaszfogadás engedélyezése</label>
+          <label className="block text-sm font-medium text-owly-text">WhatsApp-csatorna azonosítója<input className={field} inputMode="numeric" value={providerForm.respondio.channelId} onChange={e => setProviderForm({ ...providerForm, respondio: { ...providerForm.respondio, channelId: e.target.value } })} placeholder="A respond.io WhatsApp-csatorna számazonosítója" /></label>
+          <label className="block text-sm font-medium text-owly-text">respond.io API-kulcs<input className={field} type="password" autoComplete="new-password" value={providerForm.respondio.apiKey} onChange={e => setProviderForm({ ...providerForm, respondio: { ...providerForm.respondio, apiKey: e.target.value } })} placeholder={providerState?.respondio?.hasApiKey ? "Már elmentve · üresen hagyva változatlan" : "Settings → Integrations → Developer API"} /></label>
+          <label className="block text-sm font-medium text-owly-text">Webhook aláírókulcs (signingKey)<input className={field} type="password" autoComplete="new-password" value={providerForm.respondio.signingKey} onChange={e => setProviderForm({ ...providerForm, respondio: { ...providerForm.respondio, signingKey: e.target.value } })} placeholder={providerState?.respondio?.hasSigningKey ? "Már elmentve · üresen hagyva változatlan" : "A respond.io webhook beállításakor kapott signingKey"} /></label>
+          {providerWebhooks?.respondio && <p className="break-all text-xs text-owly-text-light">Webhook URL: {providerWebhooks.respondio}</p>}
+          <p className="text-sm text-owly-text-light">A respond.io Settings → Integrations → Webhooks alatt válaszd a New Incoming Message eseményt. Az Owly ellenőrzi az X-Webhook-Signature aláírást és kiszűri az ismételt üzeneteket. A csatornaazonosító a WhatsApp-csatornáé legyen. Küldéshez Growth, webhookhoz Advanced csomag szükséges. WhatsApp szabályok és szolgáltatói díjak érvényesek; ez a modul szöveges válaszokat küld, sablonküldést nem végez.</p>
+          <p className="text-xs text-owly-text-light">Az ingyenes Render alvó állapota késleltetheti a webhookot; a respond.io 5 másodpercen belüli választ vár, és csak rövid ideig próbálkozik újra. Folyamatos fogadáshoz ébren maradó kiszolgáló szükséges.</p>
+          <a className="text-sm underline" href="https://respond.io/help/integrations/webhooks" target="_blank" rel="noopener noreferrer">Hivatalos respond.io beállítási útmutató</a>
         </div>
         <button className={primaryButton} disabled={busy} onClick={saveProviders}>Szolgáltatók mentése</button>
         <div className="border-t border-owly-border pt-3 space-y-2">

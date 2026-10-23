@@ -5,6 +5,17 @@ import { processDueWhatsAppFallbacks, scheduleWhatsAppFallback } from "@/lib/cha
 const db = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
 
 describe("WhatsApp reply fallback", () => {
+  it("uses respond.io for an enabled fallback and preserves the acceptance ID", async () => {
+    db.whatsAppFallback.findMany.mockResolvedValue([{ id: "respond-fallback", fallbackProvider: "respondio", customerContact: "+36301234567", replyContent: "Prepared reply", conversationId: "conversation-1" }]);
+    db.whatsAppFallback.updateMany.mockResolvedValue({ count: 1 });
+    db.channel.findUnique.mockResolvedValue({ config: { providerSettings: { respondio: { enabled: true, apiKey: "test", channelId: "42" } } } });
+    db.message.upsert.mockResolvedValue({ id: "reply-1", content: "Prepared reply" });
+    const fetcher = vi.fn().mockResolvedValue(Response.json({ messageId: 789 }));
+    vi.stubGlobal("fetch", fetcher);
+    expect(await processDueWhatsAppFallbacks()).toBe(1);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(db.whatsAppFallback.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: "fallback_sent", providerMessageId: "789" }) }));
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });

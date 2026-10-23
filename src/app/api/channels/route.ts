@@ -8,8 +8,14 @@ const CHANNEL_TYPES = ["whatsapp", "email", "phone", "sms", "telegram"];
 function publicChannel(channel: { config: unknown; [key: string]: unknown }) {
   const config = { ...((channel.config || {}) as Record<string, unknown>) };
   const providers = (config.providerSettings || {}) as Record<string, Record<string, unknown>>;
-  if (providers.infobip || providers.peach) {
+  if (config.providerSettings) {
     config.providerSettings = {
+      respondio: {
+        enabled: providers.respondio?.enabled === true,
+        channelId: providers.respondio?.channelId || "",
+        hasApiKey: !!providers.respondio?.apiKey,
+        hasSigningKey: !!providers.respondio?.signingKey,
+      },
       infobip: {
         baseUrl: providers.infobip?.baseUrl || "",
         sender: providers.infobip?.sender || "",
@@ -41,10 +47,10 @@ export async function GET(request: NextRequest) {
       if (existing) {
         const config = existing.config as Record<string, unknown>;
         if (type === "whatsapp" && config.mode === "api") {
-          return { ...existing, status: "disconnected", isActive: false };
+          return publicChannel({ ...existing, status: "disconnected", isActive: false });
         }
         if (config.mode === "browser" && (typeof config.browserLastSeen !== "string" || Date.now() - Date.parse(config.browserLastSeen) > 90000)) {
-          return { ...existing, status: "disconnected", isActive: false };
+          return publicChannel({ ...existing, status: "disconnected", isActive: false });
         }
         return publicChannel(existing as unknown as { config: unknown; [key: string]: unknown });
       }

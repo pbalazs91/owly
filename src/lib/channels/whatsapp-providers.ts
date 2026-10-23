@@ -130,7 +130,7 @@ export async function sendPeachAppMessage(
 }
 
 export interface NormalizedInboundWhatsApp {
-  provider: "infobip" | "peach";
+  provider: "infobip" | "peach" | "respondio";
   eventId: string;
   messageId: string;
   phone: string;

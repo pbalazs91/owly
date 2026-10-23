@@ -1,3 +1,4 @@
+import { sendRespondioText } from "@/lib/channels/respondio";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
@@ -75,14 +76,14 @@ export async function POST(
     const messageRole = validRoles.includes(role) ? role : "assistant";
 
     let delivery: ProviderSendResult | null = null;
-    let provider: "infobip" | "peach" | null = null;
+    let provider: "infobip" | "peach" | "respondio" | null = null;
     if (messageRole === "assistant" && conversation.channel === "whatsapp") {
       const metadata = (conversation.metadata || {}) as Record<string, unknown>;
       const configRow = await prisma.channel.findUnique({ where: { type: "whatsapp" } });
       const config = (configRow?.config || {}) as Record<string, unknown>;
       const providerSettings = (config.providerSettings || {}) as Record<string, Record<string, unknown>>;
       const candidate = metadata.whatsappProvider || config.primaryProvider;
-      if (candidate === "infobip" || candidate === "peach") {
+      if (candidate === "infobip" || candidate === "peach" || candidate === "respondio") {
         provider = candidate;
         try {
           if (provider === "infobip") {
@@ -92,6 +93,12 @@ export async function POST(
               apiKey: typeof value.apiKey === "string" ? value.apiKey : "",
               sender: typeof value.sender === "string" ? value.sender : "",
             }, conversation.customerContact, content.trim());
+          } else if (provider === "respondio") {
+            const value = providerSettings.respondio || {};
+            delivery = value.enabled === true ? await sendRespondioText({
+              apiKey: typeof value.apiKey === "string" ? value.apiKey : "",
+              channelId: typeof value.channelId === "string" ? value.channelId : "",
+            }, conversation.customerContact, content.trim()) : { outcome: "rejected", code: "provider_disabled" };
           } else {
             const value = providerSettings.peach || {};
             delivery = await sendPeachAppMessage({
