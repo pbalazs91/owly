@@ -1,7 +1,7 @@
 export type CustomerImportRow = { name: string; companyName: string; businessType: string; companyAddress: string; website: string; email: string; phone: string; whatsapp: string; company: string; tags: string };
 export type CustomerImportField = "name" | "companyName" | "businessType" | "companyAddress" | "website" | "email" | "phone" | "whatsapp" | "tags";
 export type CustomerImportMapping = Partial<Record<CustomerImportField, string>>;
-const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
+export const MAX_CUSTOMER_IMPORT_BYTES = 25 * 1024 * 1024;
 const MAX_IMPORT_CONTACTS = 15_000;
 
 function parseRows(text: string): string[][] {
@@ -34,7 +34,7 @@ function normalizeImportedPhone(value: string) {
 }
 
 export function getCustomerImportCsvHeaders(text: string): string[] {
-  if (new TextEncoder().encode(text).byteLength > MAX_IMPORT_BYTES) throw new Error("A CSV legfeljebb 10 MB lehet.");
+  if (new TextEncoder().encode(text).byteLength > MAX_CUSTOMER_IMPORT_BYTES) throw new Error("A CSV legfeljebb 25 MB lehet.");
   const rows = parseRows(text);
   const headers = rows.shift()?.map(value => value.trim());
   if (!headers || !headers.length || headers.every(header => !header)) throw new Error("A CSV-fájl üres.");
@@ -46,7 +46,7 @@ export function getCustomerImportCsvHeaders(text: string): string[] {
 }
 
 export function parseCustomerImportCsv(text: string, mapping?: CustomerImportMapping): CustomerImportRow[] {
-  if (new TextEncoder().encode(text).byteLength > MAX_IMPORT_BYTES) throw new Error("A CSV legfeljebb 10 MB lehet.");
+  if (new TextEncoder().encode(text).byteLength > MAX_CUSTOMER_IMPORT_BYTES) throw new Error("A CSV legfeljebb 25 MB lehet.");
   const rows = parseRows(text);
   const rawHeaders = rows.shift()?.map(value => value.trim());
   if (!rawHeaders || !rawHeaders.length || rawHeaders.every(header => !header)) throw new Error("A CSV-fájl üres.");

@@ -4,6 +4,7 @@ import { Header } from "@/components/layout/header";
 import { cn } from "@/lib/utils";
 import { fetchList } from "@/lib/fetch-list";
 import { KnowledgeFileImport } from "@/components/knowledge-file-import";
+import { MAX_KNOWLEDGE_CHUNK_CHARS, splitKnowledgeContent } from "@/lib/knowledge-import-limits";
 import {
   BookOpen,
   Plus,
@@ -220,6 +221,33 @@ export default function KnowledgeBasePage() {
     setSavingEntry(true);
     setEntryError("");
     try {
+      const chunks = !editingEntry ? splitKnowledgeContent(entryForm.content) : [];
+      if (chunks.length > 1) {
+        const res = await fetch("/api/knowledge/entries/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            categoryId: selectedCategoryId,
+            priority: entryForm.priority,
+            entries: chunks.map((content, index) => {
+              const suffix = ` (${index + 1}/${chunks.length})`;
+              return {
+                title: `${entryForm.title.trim().slice(0, 200 - suffix.length)}${suffix}`,
+                content,
+              };
+            }),
+          }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          setEntryError(typeof data.error === "string" ? data.error : "A dokumentum részei nem menthetők.");
+          return;
+        }
+        setShowEntryModal(false);
+        await fetchEntries(selectedCategoryId);
+        await fetchCategories();
+        return;
+      }
       const url = editingEntry
         ? `/api/knowledge/entries/${editingEntry.id}`
         : "/api/knowledge/entries";
@@ -705,6 +733,11 @@ export default function KnowledgeBasePage() {
                   rows={8}
                   className="w-full px-3 py-2 text-sm border border-owly-border rounded-lg focus:outline-none focus:ring-2 focus:ring-owly-primary/30 focus:border-owly-primary resize-y"
                 />
+                {!editingEntry && entryForm.content.length > MAX_KNOWLEDGE_CHUNK_CHARS && (
+                  <p className="mt-1 text-xs text-owly-text-light">
+                    Mentéskor {splitKnowledgeContent(entryForm.content).length} kisebb bejegyzésre bontjuk a dokumentumot.
+                  </p>
+                )}
               </div>
 
               <div>

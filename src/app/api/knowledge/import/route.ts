@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
       size += value.byteLength;
       if (size > MAX_IMPORT_BYTES + 65536) {
         await reader.cancel();
-        return NextResponse.json({ error: "A fájl legfeljebb 2 MB lehet." }, { status: 413 });
+        return NextResponse.json({ error: "A fájl legfeljebb 25 MB lehet." }, { status: 413 });
       }
       chunks.push(value);
     }

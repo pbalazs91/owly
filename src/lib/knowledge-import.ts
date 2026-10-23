@@ -1,12 +1,13 @@
-export const MAX_IMPORT_BYTES = 2 * 1024 * 1024;
-export const MAX_IMPORT_CHARS = 100000;
+import { MAX_IMPORT_BYTES, MAX_IMPORT_CHARS } from "@/lib/knowledge-import-limits";
+
+export { MAX_IMPORT_BYTES, MAX_IMPORT_CHARS } from "@/lib/knowledge-import-limits";
 
 export class ImportError extends Error {}
 
 export async function extractKnowledge(file: File) {
   const extension = file.name.split(".").pop()?.toLowerCase();
   if (!["pdf", "txt", "md", "csv"].includes(extension || "")) throw new ImportError("PDF, TXT, MD vagy CSV fájlt válassz.");
-  if (!file.size || file.size > MAX_IMPORT_BYTES) throw new ImportError("A fájl legfeljebb 2 MB lehet, és nem lehet üres.");
+  if (!file.size || file.size > MAX_IMPORT_BYTES) throw new ImportError("A fájl legfeljebb 25 MB lehet, és nem lehet üres.");
   const bytes = new Uint8Array(await file.arrayBuffer());
   let content: string;
   if (extension === "pdf") {
@@ -15,7 +16,7 @@ export async function extractKnowledge(file: File) {
     const parser = new PDFParse({ data: bytes, isEvalSupported: false });
     try {
       const info = await parser.getInfo();
-      if (info.total > 50) throw new ImportError("Egy PDF legfeljebb 50 oldalas lehet. Oszd kisebb részekre.");
+      if (info.total > 250) throw new ImportError("Egy PDF legfeljebb 250 oldalas lehet. Oszd kisebb részekre.");
       content = (await parser.getText({ pageJoiner: "\n\n" })).text;
     } catch (error) {
       if (error instanceof ImportError) throw error;

@@ -25,7 +25,7 @@ describe("knowledge file import", () => {
   });
   it("rejects unsupported, oversized, binary and invalid PDF files", async () => {
     await expect(extractKnowledge(new File(["data"], "program.exe"))).rejects.toThrow("PDF, TXT");
-    await expect(extractKnowledge(new File([new Uint8Array(MAX_IMPORT_BYTES + 1)], "large.txt"))).rejects.toThrow("2 MB");
+    await expect(extractKnowledge(new File([new Uint8Array(MAX_IMPORT_BYTES + 1)], "large.txt"))).rejects.toThrow("25 MB");
     await expect(extractKnowledge(new File(["not a pdf"], "fake.pdf"))).rejects.toThrow("érvényes PDF");
     await expect(extractKnowledge(new File(["abc\0def"], "binary.txt"))).rejects.toThrow("egyszerű szöveg");
   });

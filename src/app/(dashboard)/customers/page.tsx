@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { cn, formatDate, getStatusColor, getChannelLabel } from "@/lib/utils";
-import { getCustomerImportCsvHeaders, parseCustomerImportCsv, type CustomerImportField, type CustomerImportMapping } from "@/lib/customer-import";
+import { getCustomerImportCsvHeaders, MAX_CUSTOMER_IMPORT_BYTES, parseCustomerImportCsv, type CustomerImportField, type CustomerImportMapping } from "@/lib/customer-import";
 
 // ---------- Types ----------
 
@@ -357,7 +357,7 @@ export default function CustomersPage() {
     setImportMessage(""); setImportError("");
     setImportCsvText(""); setImportCsvName(""); setImportHeaders([]); setImportMapping({});
     try {
-      if (file.size > 10 * 1024 * 1024) throw new Error("CSV files must be 10 MB or smaller.");
+      if (file.size > MAX_CUSTOMER_IMPORT_BYTES) throw new Error("The CSV file must be 25 MB or smaller.");
       const text = await file.text();
       const headers = getCustomerImportCsvHeaders(text);
       const normalizedHeaders = headers.map(header => header.trim().toLowerCase());
@@ -1220,7 +1220,7 @@ export default function CustomersPage() {
                 {importHeaders.map((header, index) => <option key={`${header}-${index}`} value={header}>{header}</option>)}
               </select>
             </label>)}
-            <p className="text-xs text-owly-text-light">15,000 contact maximum · 10 MB CSV maximum · Existing contacts are matched and updated.</p>
+            <p className="text-xs text-owly-text-light">15,000 contact maximum · 25 MB CSV maximum · Existing contacts are matched and updated.</p>
             <button type="button" onClick={() => void handleImportCustomers()} disabled={importing} className="rounded-lg bg-owly-primary px-3 py-2 text-sm font-medium text-white hover:bg-owly-primary-dark disabled:opacity-50">{importing ? "Importing…" : "Import mapped contacts"}</button>
           </div>}
           {importing && <p role="status" className="text-sm text-owly-text-light">{importMessage || "Importing contacts…"}</p>}
