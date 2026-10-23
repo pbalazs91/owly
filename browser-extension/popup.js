@@ -10,6 +10,9 @@ async function render(initial = false) {
   const state = await request('GET_STATE');
   const names = { connected: 'WhatsApp csatlakoztatva', qr_ready: 'A WhatsApp-oldalon vár a QR-kód', loading: 'A WhatsApp Web töltődik', disconnected: 'WhatsApp nincs csatlakoztatva' };
   $('status').textContent = names[state.waStatus] + (state.enabled ? '' : ' · feldolgozás szünetel');
+  $('rocket-wait').textContent = state.rocket?.enabled && state.rocketPending?.length
+    ? `${state.rocketPending.length} WhatsApp-válasz a gépen vár a RocketSender sikeres küldéseinek igazolására.`
+    : '';
   if (initial) {
     $('token').placeholder = state.token ? 'Párosítókód elmentve; csak cseréhez írj újat' : 'Másold ide az Owly párosítókódját';
     $('enabled').checked = state.enabled; $('auto').checked = state.autoReply;

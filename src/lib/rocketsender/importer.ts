@@ -12,6 +12,12 @@ export function normalizeRocketPhone(value: string) {
   if (!/^[1-9]\d{7,14}$/.test(phone)) throw new Error("INVALID_INTERNATIONAL_PHONE");
   return "+" + phone;
 }
+function activeTags(value: string) {
+  const tags = value.split(",").map(tag => tag.trim()).filter(Boolean);
+  if (!tags.some(tag => tag.toLowerCase() === "active")) tags.push("active");
+  return tags.join(", ");
+}
+
 const phone = z.string().max(100).transform((value, context) => {
   try { return normalizeRocketPhone(value); }
   catch { context.addIssue({ code: "custom", message: "Nemzetközi telefonszám szükséges." }); return z.NEVER; }
@@ -94,7 +100,7 @@ async function processReply(id: string) {
           }));
           if (matches.length > 1) throw new ImportFailure("AMBIGUOUS_EXISTING_CUSTOMER");
           const customer = matches[0] || await tx.customer.create({ data: {
-            name: input.name || input.phone, phone: input.phone, whatsapp: input.phone,
+            name: input.name || input.phone, phone: input.phone, whatsapp: input.phone, tags: "active",
             firstContact: new Date(input.occurredAt), lastContact: new Date(input.occurredAt),
             metadata: { source: "rocketsender", campaignId: outbound.campaignId },
           } });
@@ -104,6 +110,7 @@ async function processReply(id: string) {
         if (customer.isBlocked) throw new ImportFailure("CUSTOMER_BLOCKED");
         const metadata = customer.metadata && typeof customer.metadata === "object" && !Array.isArray(customer.metadata) ? customer.metadata : {};
         await tx.customer.update({ where: { id: customer.id }, data: {
+          tags: activeTags(customer.tags),
           lastContact: new Date(Math.max(customer.lastContact.getTime(), Date.parse(input.occurredAt))),
           ...((!customer.name || customer.name === "Unknown" || customer.name === input.phone) && input.name ? { name: input.name } : {}),
           metadata: { ...metadata, rocketSender: { source: "rocketsender", accountId: input.accountId, campaignId: outbound.campaignId } },

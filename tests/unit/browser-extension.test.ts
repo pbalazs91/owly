@@ -21,7 +21,7 @@ function extension(initial = {}) {
   };
   const context = vm.createContext({ chrome, fetch, AbortSignal, Date, console });
   vm.runInContext(readFileSync('browser-extension/background.js', 'utf8'), context);
-  return { stored, send, fetch, chrome, handle: (message: object, sender: object) => context.handle(message, sender), incoming: (message: object) => context.incoming(message), heartbeat: () => context.heartbeat(), importHistory: (id: string) => context.importHistory(id) };
+  return { stored, send, fetch, chrome, handle: (message: object, sender: object) => context.handle(message, sender), incoming: (message: object) => context.incoming(message), rocketIncoming: (message: object) => context.rocketIncoming(message), heartbeat: () => context.heartbeat(), flush: () => context.queue, importHistory: (id: string) => context.importHistory(id) };
 }
 const popup = { id: "extension-id", url: "chrome-extension://extension-id/popup.html" };
 const wa = { id: "extension-id", tab: { id: 1, url: "https://web.whatsapp.com/" } };
@@ -51,12 +51,17 @@ describe("Chrome bridge permissions and delivery", () => {
     expect(app.send).not.toHaveBeenCalled();
     expect(app.stored.rocketPending).toEqual([]);
   });
-  it("does not upload an unknown sender's message body", async () => {
+  it("keeps unmatched reply candidates on-device until a send record appears", async () => {
     const app = extension({ token: "private-token", enabled: true, rocket: { enabled: true, accountId: "+12025550100" } });
     app.fetch.mockResolvedValue({ ok: true, json: async () => ({ eligible: false }) });
     await app.incoming({ ...incoming, chatId: '12025550123@c.us', accountId: '12025550100@c.us', timestamp: Date.now() });
     expect(app.fetch).toHaveBeenCalledTimes(1);
     expect(JSON.parse(app.fetch.mock.calls[0][1].body)).not.toHaveProperty('content');
+    expect(app.stored.rocketPending).toHaveLength(1);
+    app.fetch.mockResolvedValue({ ok: true, json: async () => ({ eligible: true }) });
+    await app.incoming({ ...incoming, chatId: '12025550123@c.us', accountId: '12025550100@c.us', timestamp: Date.now() });
+    expect(app.fetch.mock.calls[2][0]).toContain('/inbound');
+    expect(JSON.parse(app.fetch.mock.calls[2][1].body).content).toBe('Kérdés');
     expect(app.stored.rocketPending).toEqual([]);
   });
   it("keeps a local reply pending when the server has not acknowledged storage", async () => {
@@ -64,6 +69,19 @@ describe("Chrome bridge permissions and delivery", () => {
     app.fetch.mockRejectedValue(new Error('Server unavailable'));
     await expect(app.incoming({ ...incoming, chatId: '12025550123@c.us', accountId: '12025550100@c.us', timestamp: Date.now() })).rejects.toThrow();
     expect(app.stored.rocketPending).toHaveLength(1);
+  });
+  it("imports a locally held reply after a later successful-send check", async () => {
+    const savedReply = { ...incoming, chatId: '12025550123@c.us', accountId: '12025550100@c.us', timestamp: Date.now(), fromMe: false };
+    const app = extension({ token: "private-token", rocket: { enabled: true, accountId: "+12025550100" } });
+    app.fetch.mockResolvedValue({ ok: true, json: async () => ({ eligible: false }) });
+    await app.rocketIncoming(savedReply);
+    expect(app.stored.rocketPending).toHaveLength(1);
+    app.fetch.mockImplementation(async (url: string) => ({ ok: true, json: async () => url.endsWith('/check') ? { eligible: true } : { eventId: 'stored' } }));
+    await app.rocketIncoming(savedReply);
+    const inboundCall = app.fetch.mock.calls.find(([url]) => url.endsWith('/inbound'));
+    expect(inboundCall, JSON.stringify(app.fetch.mock.calls.map(([url, options]) => [url, options?.body]))).toBeDefined();
+    expect(JSON.parse(inboundCall![1].body)).toMatchObject({ content: 'Kérdés', eventType: 'reply' });
+    expect(app.stored.rocketPending).toEqual([]);
   });
   it("imports only approved history without invoking AI or sending WhatsApp messages", async () => {
     const app = extension({ token: "private-token", primaryTab: 1, waStatus: "connected", allowed: { '123@c.us': 'Approved' }, remoteAllowed: { '456@c.us': 'Always approved' } });

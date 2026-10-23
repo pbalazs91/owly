@@ -323,6 +323,7 @@ export function IntegrationsContent({ embedded = false }: { embedded?: boolean }
       </IntegrationCard>
       <IntegrationCard id="rocketsender-sends" title="Tényleges küldések nyilvántartása" description="Sikeresen elküldött kampányüzenetek rögzítése" icon={Send}>
         <p>A RocketSender jelenleg nem igazolt webhookforrás. A sikeres küldések eredményét a sablon szerinti CSV/JSON-fájlból rögzítheted. Ez még nem hoz létre Owly-ügyfelet. Egy címzettlista vagy a tervezett küldési idő nem elegendő.</p>
+        <p>A RocketSenderben megkeresett személy akkor kerül az Owlyba, amikor ténylegesen válaszol. Ha a válasz előbb érkezik meg, mint ahogy feltöltöd a sikeres küldéseket, a csatlakoztatott Chrome-bővítmény a válaszadatot helyben megőrzi, és a küldési napló rögzítése után újrapróbálja. Csak az igazolt kampányválasz kerül továbbításra; a beimportált ügyfél „active” címkét kap. Az eredményt az importnaplóban ellenőrizheted.</p>
         <p>Az Excel-eredményt előbb mentsd CSV-ként, és igazítsd a sablonhoz. Csak a <code>sent</code> állapotú sorok fogadhatók el. A tényleges időpontot nem pótoljuk a feltöltés időpontjával.</p>
         <a className="underline" href="/rocketsender-sent-template.csv" download>Küldési sablon letöltése</a>
         <label className="block text-sm font-medium text-owly-text">Kampányazonosító<input className={field} value={campaign} onChange={e => setCampaign(e.target.value)} /></label>

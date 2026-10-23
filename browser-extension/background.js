@@ -73,7 +73,7 @@ async function heartbeat() {
   }
   const status = Date.now() - settings.lastStatusAt < 65000 ? settings.waStatus : 'disconnected';
   await save({ lastHeartbeatAt: Date.now() });
-  const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2, version: '0.5.4', uncertainMessageIds: settings.uncertainMessageIds });
+  const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2, version: '0.5.5', uncertainMessageIds: settings.uncertainMessageIds });
   if (result.rocket && typeof result.rocket.enabled === 'boolean') {
     await save({ rocket: { enabled: result.rocket.enabled, accountId: String(result.rocket.accountId || '') } });
   }
@@ -82,7 +82,7 @@ async function heartbeat() {
   }
   if (typeof result.desiredEnabled === 'boolean' && typeof result.controlRevision === 'string' && result.controlRevision !== settings.controlRevision) {
     await save({ enabled: result.desiredEnabled, controlRevision: result.controlRevision });
-    await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2, version: '0.5.4', uncertainMessageIds: settings.uncertainMessageIds });
+    await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2, version: '0.5.5', uncertainMessageIds: settings.uncertainMessageIds });
   }
   if (typeof result.historyRequest === 'string') void importHistory(result.historyRequest);
   if (result.rocket?.enabled && !rocketRetrying) {
@@ -173,11 +173,21 @@ async function rocketIncoming(message) {
   if (accountId !== settings.rocket.accountId) return;
   const phone = '+' + message.chatId.split('@')[0];
   const occurredAt = new Date(message.timestamp).toISOString();
-  await save({ rocketPending: [...settings.rocketPending.filter(item => item.id !== message.id), message] });
-  // Unknown senders' message bodies are not uploaded. The eligibility check
-  // contains only account/phone/time, and does not create an Owly profile.
+  const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const pending = settings.rocketPending.filter(item => item.timestamp >= cutoff);
+  const alreadyPending = pending.some(item => item.id === message.id);
+  if (!alreadyPending) pending.push(message);
+  await save({ rocketPending: pending.slice(-500) });
+  // The candidate stays in Chrome's local storage while its body is withheld
+  // from Owly. The eligibility request contains only account/phone/time and
+  // creates no Owly profile.
   const eligible = await rocketApi('/check', { accountId, phone, occurredAt });
-  if (eligible.eligible) await rocketApi('/inbound', {
+  // The user may upload RocketSender's successful-send report after a contact
+  // has already replied. Keep unmatched candidates on this device and retry
+  // after later heartbeat syncs; only send reply text once an actual prior
+  // campaign send qualifies.
+  if (!eligible.eligible) return;
+  await rocketApi('/inbound', {
     eventType: 'reply', eventId: 'wa:' + message.id, externalMessageId: message.id,
     conversationId: message.chatId, accountId, phone, occurredAt,
     name: String(message.name || '').slice(0, 200), content: message.content,

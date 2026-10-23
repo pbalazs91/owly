@@ -30,6 +30,7 @@ import {
 import { useState, useEffect, useCallback, useRef } from "react";
 import { cn, formatDate, getStatusColor, getChannelLabel } from "@/lib/utils";
 import { getCustomerImportCsvHeaders, MAX_CUSTOMER_IMPORT_BYTES, parseCustomerImportCsv, type CustomerImportField, type CustomerImportMapping } from "@/lib/customer-import";
+import { readXlsxAsCsv } from "@/lib/xlsx-import";
 
 // ---------- Types ----------
 
@@ -141,6 +142,8 @@ export default function CustomersPage() {
   const [lookupMatches, setLookupMatches] = useState<CompanyLookupMatch[]>([]);
   const [lookupMessage, setLookupMessage] = useState("");
   const [acceptingCompany, setAcceptingCompany] = useState("");
+  const [selectedCompanyResearch, setSelectedCompanyResearch] = useState<string[]>([]);
+  const [companyResearchBusy, setCompanyResearchBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [blockedFilter, setBlockedFilter] = useState(false);
 
@@ -358,8 +361,9 @@ export default function CustomersPage() {
     setImportMessage(""); setImportError("");
     setImportCsvText(""); setImportCsvName(""); setImportHeaders([]); setImportMapping({});
     try {
-      if (file.size > MAX_CUSTOMER_IMPORT_BYTES) throw new Error("The CSV file must be 25 MB or smaller.");
-      const text = await file.text();
+      if (file.size > MAX_CUSTOMER_IMPORT_BYTES) throw new Error("The CSV or Excel file must be 25 MB or smaller.");
+      if (/\.xls$/i.test(file.name)) throw new Error("Save this older Excel workbook as .xlsx or CSV, then upload it again.");
+      const text = /\.xlsx$/i.test(file.name) ? await readXlsxAsCsv(file) : await file.text();
       const headers = getCustomerImportCsvHeaders(text);
       const normalizedHeaders = headers.map(header => header.trim().toLowerCase());
       const findHeader = (...aliases: string[]) => headers[normalizedHeaders.findIndex(header => aliases.includes(header))] || "";
@@ -403,36 +407,33 @@ export default function CustomersPage() {
       }
       setImportMessage(`${totals.imported} contacts imported: ${totals.created} new, ${totals.updated} updated, ${totals.duplicates} duplicate rows skipped.`);
       setLookupMatches([]); setLookupMessage("");
-      if (totals.customerIds.length) {
-        setLookupMessage("Searching public company phone listings…");
-        const lookupTotals = { searched: 0, matched: 0, matches: [] as CompanyLookupMatch[] };
-        let lookupFailed = false;
-        try {
-          for (let start = 0; start < totals.customerIds.length; start += batchSize) {
-            const lookupResponse = await fetch("/api/customers/import/lookup", {
-              method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customerIds: totals.customerIds.slice(start, start + batchSize) }),
-            });
-            const lookupResult = await lookupResponse.json();
-            if (!lookupResponse.ok) { lookupFailed = true; break; }
-            lookupTotals.searched += lookupResult.searched || 0;
-            lookupTotals.matched += lookupResult.matched || 0;
-            if (Array.isArray(lookupResult.matches)) lookupTotals.matches.push(...lookupResult.matches);
-          }
-        } catch { lookupFailed = true; }
-        if (lookupFailed) {
-          setLookupMessage("The public company search is temporarily unavailable. Your contacts were imported successfully; you can look up names from their profiles.");
-        } else {
-          setLookupMatches(lookupTotals.matches);
-          setLookupMessage(lookupTotals.matched
-            ? `Found public company matches for ${lookupTotals.matched} of ${lookupTotals.searched} phone numbers. Review and approve each name below.`
-            : `No exact public company phone matches found for ${lookupTotals.searched} numbers. The contacts were imported; you can still check them individually from their profiles.`);
-        }
-      }
+      setLookupMessage(totals.customerIds.length ? "Contacts imported. Select customers in the list and start public company research when ready." : "");
       await fetchCustomers(1);
       setImportCsvText(""); setImportCsvName(""); setImportHeaders([]); setImportMapping({});
       setShowImportModal(false);
     } catch (error) { setImportError(error instanceof Error ? error.message : "The CSV could not be read."); }
     finally { setImporting(false); }
+  };
+
+  const researchSelectedCompanies = async () => {
+    if (!selectedCompanyResearch.length || companyResearchBusy) return;
+    setCompanyResearchBusy(true); setImportError(""); setLookupMessage("Searching public company phone listings…"); setLookupMatches([]);
+    try {
+      const matches: CompanyLookupMatch[] = [];
+      let searched = 0, matched = 0, unavailable = false;
+      for (let start = 0; start < selectedCompanyResearch.length; start += 50) {
+        const response = await fetch("/api/customers/company-name/bulk", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ customerIds: selectedCompanyResearch.slice(start, start + 50) }) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "The company search failed.");
+        searched += result.searched || 0; matched += result.matched || 0;
+        unavailable ||= !!result.unavailable;
+        if (Array.isArray(result.matches)) matches.push(...result.matches);
+      }
+      setLookupMatches(matches);
+      setLookupMessage(`${unavailable ? "Some public lookup requests were unavailable. " : ""}${matched ? `Found public company matches for ${matched} of ${searched} selected customers. Review each source and approve names below.` : unavailable ? `No confirmed matches found among ${searched} selected customers; try again later.` : `No exact public company phone matches found for ${searched} selected customers.`}`);
+      setSelectedCompanyResearch([]);
+    } catch (error) { setImportError(error instanceof Error ? error.message : "The company search failed."); setLookupMessage(""); }
+    finally { setCompanyResearchBusy(false); }
   };
 
   const acceptCompanyLookup = async (match: CompanyLookupMatch, candidate: CompanyLookupMatch["candidates"][number]) => {
@@ -564,6 +565,12 @@ export default function CustomersPage() {
                 Blocked
               </button>
             </div>
+            {selectedCompanyResearch.length > 0 && <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg bg-owly-primary-50 px-3 py-2 text-sm">
+              <span>{selectedCompanyResearch.length} selected</span>
+              <button type="button" onClick={() => void researchSelectedCompanies()} disabled={companyResearchBusy} className="rounded-lg bg-owly-primary px-3 py-2 font-medium text-white disabled:opacity-50">{companyResearchBusy ? "Searching public records…" : "Research company details"}</button>
+              <button type="button" onClick={() => setSelectedCompanyResearch([])} disabled={companyResearchBusy} className="underline">Clear selection</button>
+              <span className="text-xs text-owly-text-light">Exact public company phone matches only; you review and approve each result.</span>
+            </div>}
           </div>
 
           {/* Table */}
@@ -590,6 +597,7 @@ export default function CustomersPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-owly-border bg-owly-surface/50">
+                    <th className="px-3 py-3"><input type="checkbox" aria-label="Select all customers on this page" checked={customers.length > 0 && customers.every(customer => selectedCompanyResearch.includes(customer.id))} onChange={event => setSelectedCompanyResearch(current => event.target.checked ? [...new Set([...current, ...customers.map(customer => customer.id)])] : current.filter(id => !customers.some(customer => customer.id === id)))} /></th>
                     <th className="text-left px-6 py-3 text-xs font-semibold text-owly-text-light uppercase tracking-wider">
                       Name
                     </th>
@@ -627,6 +635,7 @@ export default function CustomersPage() {
                           "bg-owly-primary-50"
                       )}
                     >
+                      <td className="px-3 py-3" onClick={event => event.stopPropagation()}><input type="checkbox" aria-label={`Select ${customer.name}`} checked={selectedCompanyResearch.includes(customer.id)} onChange={event => setSelectedCompanyResearch(current => event.target.checked ? [...new Set([...current, customer.id])] : current.filter(id => id !== customer.id))} /></td>
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-owly-primary-100 flex items-center justify-center flex-shrink-0">
@@ -1200,14 +1209,14 @@ export default function CustomersPage() {
       {/* Add Customer Modal */}
       <Modal open={showImportModal} onClose={() => !importing && setShowImportModal(false)} title="Import customers" size="lg" className="max-h-[90vh] overflow-y-auto">
         <div className="space-y-4">
-          <p className="text-sm text-owly-text-light">Upload a CSV contact list. You can map any source column to Owly fields. Up to 15,000 contacts can be imported in safe batches.</p>
+          <p className="text-sm text-owly-text-light">Upload a CSV or Excel (.xlsx) contact list. You can map any source column to Owly fields. Up to 15,000 contacts can be imported in safe batches.</p>
           <div className="flex flex-wrap items-center gap-3">
             <input
               ref={customerImportFileInput}
               className="hidden"
               type="file"
-              accept=".csv,text/csv,application/vnd.ms-excel"
-              aria-label="Choose customer CSV file"
+              accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              aria-label="Choose customer CSV or Excel file"
               disabled={importing}
               onChange={event => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; void handleSelectImportFile(file); }}
             />
@@ -1217,13 +1226,13 @@ export default function CustomersPage() {
               onClick={() => customerImportFileInput.current?.click()}
               className="inline-flex items-center gap-2 rounded-lg border border-owly-border px-3 py-2 text-sm font-medium hover:bg-owly-primary-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Upload className="h-4 w-4" />{importing ? "Importing…" : "Choose CSV file"}
+              <Upload className="h-4 w-4" />{importing ? "Importing…" : "Choose CSV or Excel file"}
             </button>
             <a href="/owly-customer-import-template.csv" download className="text-sm underline text-owly-text-light">Download CSV template</a>
           </div>
           {importCsvName && !importCsvText && <p className="text-sm text-owly-text-light">Reading {importCsvName}…</p>}
           {importCsvText && <div className="rounded-lg border border-owly-border p-3 space-y-3">
-            <p className="text-sm font-medium text-owly-text">Match CSV columns · {importCsvName}</p>
+            <p className="text-sm font-medium text-owly-text">Match file columns · {importCsvName}</p>
             <p className="text-xs text-owly-text-light">Choose which source column contains each Owly field. At least one of email, phone, or WhatsApp must be mapped.</p>
             {([
               ["name", "Customer name"], ["companyName", "Company name"], ["businessType", "Business type"], ["companyAddress", "Company headquarters"], ["website", "Website"], ["email", "Email"], ["phone", "Phone"], ["whatsapp", "WhatsApp"], ["tags", "Tags"],
@@ -1234,7 +1243,7 @@ export default function CustomersPage() {
                 {importHeaders.map((header, index) => <option key={`${header}-${index}`} value={header}>{header}</option>)}
               </select>
             </label>)}
-            <p className="text-xs text-owly-text-light">15,000 contact maximum · 25 MB CSV maximum · Existing contacts are matched and updated.</p>
+            <p className="text-xs text-owly-text-light">15,000 contact maximum · 25 MB CSV or Excel maximum · Existing contacts are matched and updated.</p>
             <button type="button" onClick={() => void handleImportCustomers()} disabled={importing} className="rounded-lg bg-owly-primary px-3 py-2 text-sm font-medium text-white hover:bg-owly-primary-dark disabled:opacity-50">{importing ? "Importing…" : "Import mapped contacts"}</button>
           </div>}
           {importing && <p role="status" className="text-sm text-owly-text-light">{importMessage || "Importing contacts…"}</p>}

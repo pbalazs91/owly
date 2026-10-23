@@ -20,6 +20,8 @@ A nyilvános termékleírás helyi Excel-eredményexportot dokumentál. Natív R
 
 A sablon: `/rocketsender-sent-template.csv`. Kötelező soradat: `phone`, `status=sent`, `sentAt`. A fiók és kampány megadható a feltöltés űrlapján, vagy soronként az `accountId`, `campaignId` mezőkben. A `sourceMessageId` és `content` opcionális; külső üzenetazonosító hiányában külön, determinisztikus nyilvántartási azonosító készül. A feltöltés időpontja soha nem helyettesíti a tényleges küldés idejét. Legfeljebb 100 sor/128 kB tölthető fel egyszerre. Az ismételt feltöltés idempotens; egy részben sikertelen feltöltés javítás után újraküldhető.
 
+A Chrome-bővítmény a WhatsApp-válaszokat a saját gépen, legfeljebb 30 napig és 500 eseményig várakoztatja, ha a sikeres küldési naplót még nem töltötték fel. Ilyenkor kizárólag a telefonszámot, WhatsApp-fiókot és időpontot küldi el az Owly jogosultságellenőrzéséhez; az üzenetszöveget csak sikeres kampányegyezés után továbbítja. A napló feltöltése után a következő bővítmény-szinkron újrapróbálja az eseményt. Az Owlyba importált vagy frissített válaszoló ügyfél `active` címkét kap.
+
 ## Adatok és konkurencia
 
 A migráció hat új táblát hoz létre; meglévő felhasználót, beállítást és üzenetet nem módosít vagy töröl. Az Owly jelenleg egy szervezetet kezel telepítésenként: a szervezeti kulcs szerveroldali `default`, nem szabadon beküldhető tenantazonosító.
@@ -48,7 +50,7 @@ Az integráció nem fogad be azonosítatlan nyilvános webhookot, és nem kezeli
 
 Helyi reprodukció: `npm install --prefix .local-test @electric-sql/pglite @electric-sql/pglite-socket --ignore-scripts`, majd `npx tsx scripts/verify-rocketsender-local.ts`. A próbafolyamat kizárólag saját, helyi, kitalált adatbázist hoz létre; nem használ meglévő éles adatbázis-URL-t.
 
-Valódi próba: saját WhatsApp-fiók és külön teszttelefon beállítása → próba mód → RocketSender-küldés → sikeres küldés nyilvántartásba vétele → másik telefon válasza → Customers/Conversations ellenőrzése → duplikációpróba és emberi megerősítés. Az aktív mód addig nem menthető. A valódi RocketSender–WhatsApp-próba még nincs igazolva.
+Valódi próba: saját WhatsApp-fiók és külön teszttelefon beállítása → próba mód → RocketSender-küldés → válasz (akár a sikeres küldési napló feltöltése előtt) → tényleges küldési eredmény feltöltése → WhatsApp Web nyitva tartása a szinkronhoz → Customers/Conversations ellenőrzése → duplikációpróba és emberi megerősítés. Az aktív mód addig nem menthető. A valódi RocketSender–WhatsApp-próba még nincs igazolva.
 
 ## Nyilvános céges névjavaslat
 
