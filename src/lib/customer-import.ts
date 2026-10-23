@@ -4,16 +4,35 @@ export type CustomerImportMapping = Partial<Record<CustomerImportField, string>>
 export const MAX_CUSTOMER_IMPORT_BYTES = 25 * 1024 * 1024;
 const MAX_IMPORT_CONTACTS = 15_000;
 
+function detectDelimiter(text: string): string {
+  const input = text.replace(/^\uFEFF/, "");
+  const counts = new Map([[",", 0], [";", 0], ["\t", 0]]);
+  let quoted = false;
+  for (let i = 0; i < input.length; i++) {
+    const char = input[i];
+    if (char === '"') {
+      if (quoted && input[i + 1] === '"') i++;
+      else quoted = !quoted;
+    } else if (!quoted && (char === "\n" || char === "\r")) {
+      break;
+    } else if (!quoted && counts.has(char)) {
+      counts.set(char, counts.get(char)! + 1);
+    }
+  }
+  return [...counts].sort((a, b) => b[1] - a[1])[0][0];
+}
+
 function parseRows(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [], field = "", quoted = false;
   const input = text.replace(/^\uFEFF/, "");
+  const delimiter = detectDelimiter(input);
   for (let i = 0; i < input.length; i++) {
     const char = input[i];
     if (char === '"') {
       if (quoted && input[i + 1] === '"') { field += '"'; i++; }
       else quoted = !quoted;
-    } else if (char === "," && !quoted) { row.push(field); field = ""; }
+    } else if (char === delimiter && !quoted) { row.push(field); field = ""; }
     else if ((char === "\n" || char === "\r") && !quoted) {
       if (char === "\r" && input[i + 1] === "\n") i++;
       row.push(field); if (row.some(value => value.trim())) rows.push(row);

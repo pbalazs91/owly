@@ -366,14 +366,14 @@ export default function CustomersPage() {
       setImportCsvName(file.name);
       setImportHeaders(headers);
       setImportMapping({
-        name: findHeader("name", "customer", "contact name", "full name"),
+        name: findHeader("name", "customer", "contact name", "full name", "név", "ügyfél", "ügyfél neve", "kapcsolattartó"),
         companyName: findHeader("companyname", "company name", "company", "business name", "cégnév"),
         businessType: findHeader("businesstype", "business type", "industry", "sector", "üzleti típus", "tevékenység"),
         companyAddress: findHeader("companyaddress", "company address", "company headquarters", "headquarters", "address", "székhely", "cég székhelye"),
         website: findHeader("website", "web site", "url", "weboldal"),
-        email: findHeader("email", "e-mail", "email address"),
-        phone: findHeader("phone", "telephone", "mobile", "telefon"),
-        whatsapp: findHeader("whatsapp", "whatsapp number", "wa"),
+        email: findHeader("email", "e-mail", "email address", "email cím", "e-mail cím"),
+        phone: findHeader("phone", "telephone", "mobile", "telefon", "telefonszám", "mobilszám"),
+        whatsapp: findHeader("whatsapp", "whatsapp number", "wa", "whatsapp szám"),
         tags: findHeader("tags", "labels", "címkék"),
       });
     } catch (error) { setImportError(error instanceof Error ? error.message : "The CSV could not be read."); }

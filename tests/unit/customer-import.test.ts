@@ -16,6 +16,13 @@ describe("Owly customer CSV import", () => {
     });
     expect(row).toMatchObject({ name: "Anna", website: "https://example.hu", businessType: "Könyvelés", phone: "+36301234567" });
   });
+  it("automatically reads semicolon-delimited CSV exported by spreadsheet apps", () => {
+    const csv = 'Ügyfél;E-mail;Telefon;Cégnév\r\n"Acme; Kft.";hello@acme.hu;+36 30 123 4567;Acme Kft.';
+    expect(getCustomerImportCsvHeaders(csv)).toEqual(["Ügyfél", "E-mail", "Telefon", "Cégnév"]);
+    expect(parseCustomerImportCsv(csv, { name: "Ügyfél", email: "E-mail", phone: "Telefon", companyName: "Cégnév" })[0]).toMatchObject({
+      name: "Acme; Kft.", email: "hello@acme.hu", phone: "+36301234567", companyName: "Acme Kft.",
+    });
+  });
   it("accepts email-only contacts and prevents importing the active system tag", () => {
     expect(parseCustomerImportCsv("email,tags\nhello@example.com,active")[0]).toMatchObject({ email: "hello@example.com", phone: "", tags: "" });
   });
