@@ -119,6 +119,20 @@ describe("Restricted WhatsApp browser connection", () => {
     expect(JSON.stringify(data)).not.toContain("never-return-this");
     expect(db.message.create).toHaveBeenCalledOnce();
   });
+  it("generates a Gemini WhatsApp draft on the server without returning the API key", async () => {
+    db.settings.findUnique.mockResolvedValue({ aiProvider: "gemini", aiModel: "gemini-3.8-flash", aiApiKey: "private-google-key", maxTokens: 512, temperature: 0.5, businessName: "Test" });
+    const responseBody = {
+      candidates: [{ content: { parts: [{ text: "Gemini generated draft" }] } }],
+    };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(responseBody), { status: 200, headers: { "Content-Type": "application/json" } })));
+    const response = await POST(request({ action: "incoming", chatId: "123@c.us", id: "gemini-one", content: "Szia" }));
+    const data = await parseJsonResponse(response);
+    expect(response.status).toBe(200);
+    expect(data).toMatchObject({ aiEnabled: true, generatedDraft: "Gemini generated draft" });
+    expect(JSON.stringify(data)).not.toContain("private-google-key");
+    expect(db.whatsAppFallback.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { replyContent: "Gemini generated draft" } }));
+    vi.unstubAllGlobals();
+  });
   it("does not generate another reply after an acknowledged delivery", async () => {
     db.message.findUnique.mockResolvedValue({ id: "existing" });
     const data = await parseJsonResponse(await POST(request({ action: "incoming", chatId: "123@c.us", id: "one", content: "Szia" })));

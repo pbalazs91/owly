@@ -87,7 +87,7 @@ export function OnboardingChecklist() {
           href: "/settings",
           completed: settings.aiProvider === "ollama"
             ? connectedChannels.some((channel: { type: string; config?: { mode?: string } }) => channel.type === "whatsapp" && channel.config?.mode === "browser")
-            : settings.aiProvider === "openai" && !!settings.aiApiKey && settings.aiApiKey.length > 0,
+            : (settings.aiProvider === "openai" || settings.aiProvider === "gemini") && !!settings.aiApiKey && settings.aiApiKey.length > 0,
           icon: Bot,
         },
         {

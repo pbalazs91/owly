@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import OpenAI from "openai";
 import { logger } from "@/lib/logger";
 import { requireAuth, isAuthenticated } from "@/lib/route-auth";
+import { generateGeminiContent } from "@/lib/ai/gemini";
 
 export async function POST(request: NextRequest) {
   const auth = await requireAuth(request, "knowledge:read");
@@ -71,21 +72,33 @@ Your answer here...
 ---SOURCES---
 [1, 3, 5]`;
 
-    const openai = new OpenAI({
-      apiKey: settings.aiApiKey,
-    });
-
-    const completion = await openai.chat.completions.create({
-      model: settings.aiModel || "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: question.trim() },
-      ],
-      max_tokens: settings.maxTokens || 2048,
-      temperature: settings.temperature ?? 0.7,
-    });
-
-    const responseText = completion.choices[0]?.message?.content || "";
+    let responseText: string;
+    if (settings.aiProvider === "gemini") {
+      const completion = await generateGeminiContent({
+        apiKey: settings.aiApiKey,
+        model: settings.aiModel || "gemini-3.8-flash",
+        systemInstruction: systemPrompt,
+        contents: [{ role: "user", parts: [{ text: question.trim() }] }],
+        maxTokens: settings.maxTokens || 2048,
+        temperature: settings.temperature ?? 0.7,
+      });
+      responseText = completion.candidates?.[0]?.content?.parts
+        ?.map((part) => part.text || "")
+        .filter(Boolean)
+        .join("\n") || "";
+    } else {
+      const openai = new OpenAI({ apiKey: settings.aiApiKey });
+      const completion = await openai.chat.completions.create({
+        model: settings.aiModel || "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: question.trim() },
+        ],
+        max_tokens: settings.maxTokens || 2048,
+        temperature: settings.temperature ?? 0.7,
+      });
+      responseText = completion.choices[0]?.message?.content || "";
+    }
 
     // Parse sources from response
     let answer = responseText;

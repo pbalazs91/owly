@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
 function extension(initial = {}) {
-  const stored: Record<string, any> = { ...initial };
+  const stored: Record<string, unknown> = { ...initial };
   const send = vi.fn().mockResolvedValue({ sent: true });
   const fetch = vi.fn().mockImplementation(async (url: string, options?: { body?: string }) => ({
     ok: true, json: async () => url.includes('/api/chat') ? { message: { content: "Helyi válasz" } } :
@@ -81,6 +81,14 @@ describe("Chrome bridge permissions and delivery", () => {
     await app.incoming(incoming);
     expect(app.stored.drafts).toHaveLength(1);
     expect(app.stored.drafts[0].content).toBe('Helyi válasz');
+  });
+  it("stores server-generated Gemini replies without calling local Ollama", async () => {
+    const app = extension({ token: "private-token", enabled: true, remoteAllowed: { '123@c.us': '+123' } });
+    app.fetch.mockResolvedValue({ ok: true, json: async () => ({ conversationId: "conv", messageId: "wab-gemini", aiEnabled: true, generatedDraft: "Gemini válasz" }) });
+    await app.incoming(incoming);
+    expect(app.fetch).toHaveBeenCalledTimes(1);
+    expect(app.fetch.mock.calls[0][0]).toContain("/api/channels/whatsapp/browser");
+    expect(app.stored.drafts).toContainEqual(expect.objectContaining({ id: "wab-gemini", content: "Gemini válasz" }));
   });
   it("recovers the live WhatsApp tab from the content-script health check", async () => {
     const app = extension({ token: "private-token", primaryTab: 55 });

@@ -22,6 +22,7 @@ const mockPrisma = prisma as unknown as Record<string, Record<string, ReturnType
 describe("AI Engine", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     mockOpenAICreateFn.mockReset();
     mockOpenAIConfig = undefined;
 
@@ -132,6 +133,66 @@ describe("AI Engine", () => {
     expect(response).toBe("Ollama reply");
     expect(mockOpenAIConfig).toEqual({ apiKey: "ollama", baseURL: "http://127.0.0.1:11434/v1" });
     expect(mockOpenAICreateFn).toHaveBeenCalledWith(expect.objectContaining({ model: "llama3.2:3b" }));
+  });
+
+  it("should generate responses through Gemini with system instructions and tool declarations", async () => {
+    mockPrisma.settings.findFirst.mockResolvedValue({
+      id: "default", aiProvider: "gemini", aiModel: "gemini-3.8-flash", aiApiKey: "google-test-key",
+      maxTokens: 1000, temperature: 0.4, businessName: "Test", businessDesc: "",
+      welcomeMessage: "", tone: "friendly", language: "auto",
+    });
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      candidates: [{ content: { parts: [{ text: "Gemini reply" }] } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { chat } = await import("@/lib/ai/engine");
+    const response = await chat("conv-1", "Hello");
+
+    expect(response).toBe("Gemini reply");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent",
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({ "x-goog-api-key": "google-test-key" }),
+        body: expect.stringContaining("function_declarations"),
+      })
+    );
+    const request = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(request.system_instruction.parts[0].text).toContain("Owly");
+    expect(request.generation_config.max_output_tokens).toBe(1000);
+  });
+
+  it("should execute Gemini function calls and send results back before answering", async () => {
+    mockPrisma.settings.findFirst.mockResolvedValue({
+      id: "default", aiProvider: "gemini", aiModel: "gemini-3.8-flash", aiApiKey: "google-test-key",
+      maxTokens: 1000, temperature: 0.4, businessName: "Test", businessDesc: "",
+      welcomeMessage: "", tone: "friendly", language: "auto",
+    });
+    mockPrisma.conversation.findMany.mockResolvedValue([]);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        candidates: [{ content: { role: "model", parts: [{
+          functionCall: { id: "call-1", name: "get_customer_history", args: { customerContact: "+1555" } },
+        }] } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ text: "I found no previous chats." }] } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { chat } = await import("@/lib/ai/engine");
+    const response = await chat("conv-1", "Do you know me?");
+
+    expect(response).toBe("I found no previous chats.");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const followup = JSON.parse(fetchMock.mock.calls[1][1].body as string);
+    expect(followup.contents).toContainEqual(expect.objectContaining({
+      role: "user",
+      parts: [expect.objectContaining({ functionResponse: expect.objectContaining({
+        id: "call-1", name: "get_customer_history",
+      }) })],
+    }));
   });
 
   it("should save user and assistant messages", async () => {

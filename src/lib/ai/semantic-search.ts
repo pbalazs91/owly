@@ -1,7 +1,7 @@
 /**
  * Semantic Search for Knowledge Base
  *
- * Uses OpenAI embeddings for vector similarity search.
+ * Uses OpenAI embeddings for vector similarity search when OpenAI is configured.
  * Falls back to keyword matching when embeddings are unavailable.
  *
  * Embeddings are stored in the KnowledgeEntry metadata field as JSON.
@@ -101,12 +101,14 @@ export async function searchKnowledgeBase(
 
   // Try to get API key for embeddings
   const settings = await prisma.settings.findFirst({
-    select: { aiApiKey: true },
+    select: { aiApiKey: true, aiProvider: true },
   });
 
   let results: SearchResult[];
 
-  if (settings?.aiApiKey) {
+  // The stored embeddings use OpenAI's embedding space. Never send a Gemini
+  // credential to OpenAI or compare vectors from different providers.
+  if (settings?.aiProvider === "openai" && settings.aiApiKey) {
     // Try semantic search with embeddings
     const cacheKey = `embedding:${Buffer.from(query).toString("base64").substring(0, 50)}`;
     let queryEmbedding: number[] | null = null;

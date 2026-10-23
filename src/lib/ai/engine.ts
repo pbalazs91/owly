@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { prisma } from "@/lib/prisma";
 import { owlyTools, executeToolCall } from "./tools";
 import { emitNewMessage } from "@/lib/realtime";
+import { generateGeminiContent, type GeminiContent } from "./gemini";
 import { analyzeSentiment, detectIntent, estimateConfidence, requiresHumanApproval } from "./guardrails";
 import type {
   AIMessage,
@@ -216,6 +217,10 @@ async function callAI(
     return "I apologize, but I'm having trouble processing your request. Let me connect you with a team member.";
   }
 
+  if (config.provider === "gemini") {
+    return callGemini(config, messages, conversationId, depth);
+  }
+
   const ollamaBase = (process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/+$/, "");
   const openai = new OpenAI({
     apiKey: config.provider === "ollama" ? "ollama" : config.apiKey,
@@ -283,6 +288,69 @@ async function callAI(
   }
 
   return choice.message.content || "I apologize, I could not generate a response.";
+}
+
+async function callGemini(
+  config: AIConfig,
+  messages: AIMessage[],
+  conversationId: string,
+  depth: number
+): Promise<string> {
+  const contents: GeminiContent[] = messages
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => ({
+      role: message.role === "assistant" ? "model" : "user",
+      parts: [{ text: message.content }],
+    }));
+
+  const systemInstruction = messages.find((message) => message.role === "system")?.content;
+
+  try {
+    for (let round = depth; round <= 5; round += 1) {
+      const result = await generateGeminiContent({
+        apiKey: config.apiKey,
+        model: config.model,
+        contents,
+        systemInstruction,
+        maxTokens: config.maxTokens,
+        temperature: config.temperature,
+        tools: owlyTools,
+      });
+      const parts = result.candidates?.[0]?.content?.parts || [];
+      const calls = parts.filter((part) => part.functionCall?.name);
+      if (calls.length === 0) {
+        const text = parts.map((part) => part.text || "").filter(Boolean).join("\n").trim();
+        return text || "I apologize, I could not generate a response.";
+      }
+
+      contents.push({ role: "model", parts });
+      for (const part of calls) {
+        const call = part.functionCall!;
+        let response: Record<string, unknown>;
+        try {
+          const toolResult = await executeToolCall(call.name, call.args || {}, conversationId);
+          try {
+            response = JSON.parse(toolResult) as Record<string, unknown>;
+          } catch {
+            response = { result: toolResult };
+          }
+        } catch (error) {
+          response = { error: error instanceof Error ? error.message : "Tool execution failed." };
+        }
+        contents.push({
+          role: "user",
+          parts: [{ functionResponse: {
+            name: call.name,
+            ...(call.id && { id: call.id }),
+            response,
+          } }],
+        });
+      }
+    }
+    return "I apologize, but I'm having trouble processing your request. Let me connect you with a team member.";
+  } catch {
+    return "I'm temporarily unable to process your request. Please try again in a moment, or I can connect you with a team member.";
+  }
 }
 
 export async function createNewConversation(

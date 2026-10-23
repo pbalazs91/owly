@@ -73,7 +73,7 @@ async function heartbeat() {
   }
   const status = Date.now() - settings.lastStatusAt < 65000 ? settings.waStatus : 'disconnected';
   await save({ lastHeartbeatAt: Date.now() });
-  const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2, version: '0.5.1', uncertainMessageIds: settings.uncertainMessageIds });
+  const result = await api('heartbeat', { status, enabled: settings.enabled, controlRevision: settings.controlRevision, protocol: 2, version: '0.5.3', uncertainMessageIds: settings.uncertainMessageIds });
   if (result.rocket && typeof result.rocket.enabled === 'boolean') {
     await save({ rocket: { enabled: result.rocket.enabled, accountId: String(result.rocket.accountId || '') } });
   }
@@ -82,7 +82,7 @@ async function heartbeat() {
   }
   if (typeof result.desiredEnabled === 'boolean' && typeof result.controlRevision === 'string' && result.controlRevision !== settings.controlRevision) {
     await save({ enabled: result.desiredEnabled, controlRevision: result.controlRevision });
-    await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2, version: '0.5.1', uncertainMessageIds: settings.uncertainMessageIds });
+    await api('heartbeat', { status, enabled: result.desiredEnabled, controlRevision: result.controlRevision, protocol: 2, version: '0.5.3', uncertainMessageIds: settings.uncertainMessageIds });
   }
   if (typeof result.historyRequest === 'string') void importHistory(result.historyRequest);
   if (result.rocket?.enabled && !rocketRetrying) {
@@ -131,6 +131,14 @@ async function incoming(message) {
   }
   if (result.duplicate || !result.aiEnabled) { await processed(); return; }
   if (settings.drafts.some((item) => item.id === result.messageId)) { await processed(); return; }
+  if (typeof result.generatedDraft === 'string' && result.generatedDraft.trim()) {
+    const draft = { id: result.messageId, chatId: message.chatId, name: message.name, content: result.generatedDraft.trim().slice(0, 6000) };
+    const current = await state();
+    await save({ drafts: [...current.drafts, draft].slice(-20), error: '' });
+    await processed();
+    if (current.autoReply && current.enabled && isAllowed(current, draft.chatId)) await sendDraft(draft.id);
+    return;
+  }
   const response = await fetch(OLLAMA + '/api/chat', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ model: result.model || 'llama3.2:3b', messages: result.messages, stream: false, keep_alive: '5m', options: { num_ctx: 8192, num_predict: result.maxTokens, temperature: result.temperature } }),

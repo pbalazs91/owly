@@ -434,6 +434,10 @@ function AISection({
       { value: "gpt-4o-mini", label: "GPT-4o Mini" },
       { value: "gpt-4-turbo", label: "GPT-4 Turbo" },
     ],
+    gemini: [
+      { value: "gemini-3.8-flash", label: "Gemini 3.8 Flash (ajánlott)" },
+      { value: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite (költséghatékony)" },
+    ],
     claude: [
       { value: "claude-sonnet-4-20250514", label: "Claude Sonnet 4" },
       { value: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet" },
@@ -462,13 +466,20 @@ function AISection({
           options={[
             { value: "ollama", label: "Ollama (Local, primary for WhatsApp extension)" },
             { value: "openai", label: "OpenAI" },
+            { value: "gemini", label: "Google Gemini" },
             { value: "claude", label: "Claude (Anthropic)" },
           ]}
         />
       </FormField>
-      {data.aiProvider !== "openai" && (
+      {data.aiProvider !== "openai" && data.aiProvider !== "gemini" && (
         <p role="status" className="text-sm text-owly-danger">
           {data.aiProvider === "ollama" ? "Az Ollama az elsődleges AI a helyi WhatsApp-bővítményhez. Válaszd ki a gépeden telepített modellt, majd a bővítményben kapcsold be a kapcsolatot. A Renderen futó szerver önmagában nem tudja elérni a gépeden futó Ollamát." : "A Claude ebben a verzióban még nincs bekötve a válaszadáshoz."}
+        </p>
+      )}
+      {data.aiProvider === "gemini" && (
+        <p role="status" className="text-sm text-owly-text-light">
+          A Gemini az Owly szerverén keresztül válaszol, a WhatsApp-bővítmény is ezt a szolgáltatót használja, ha ezt választod. A Gemini API-kulcsot a Google AI Studio-ban tudod létrehozni:
+          {" "}<a className="text-owly-primary underline" href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer">Google AI Studio</a>.
         </p>
       )}
       <FormField label="Model" description="The specific model to use for AI responses.">
@@ -478,14 +489,14 @@ function AISection({
           options={modelOptions[data.aiProvider] || []}
         />
       </FormField>
-      <FormField label="API Key" description="Your provider API key. Not required for Ollama.">
+      <FormField label={data.aiProvider === "gemini" ? "Gemini API Key" : "API Key"} description={data.aiProvider === "gemini" ? "Google AI Studio API-kulcs. Mentés után a felületen maszkolva jelenik meg." : "Your provider API key. Not required for Ollama."}>
         <PasswordInput
           value={data.aiApiKey}
           onChange={(v) => update("aiApiKey", v)}
           placeholder={
             data.aiProvider === "ollama"
               ? "Not required for local models"
-              : "Enter your API key"
+            : data.aiProvider === "gemini" ? "Google AI Studio API key" : "Enter your API key"
           }
         />
       </FormField>
@@ -836,7 +847,7 @@ export default function SettingsPage() {
         return next;
       });
       addToast("success", activeTab === "ai" && saved.aiProvider !== "openai"
-        ? saved.aiProvider === "ollama" ? "Elmentve. Az Ollama a bekapcsolt Chrome-bővítményen keresztül működik." : "Elmentve. Ez az AI-szolgáltató még nincs bekötve."
+        ? saved.aiProvider === "ollama" ? "Elmentve. Az Ollama a bekapcsolt Chrome-bővítményen keresztül működik." : saved.aiProvider === "gemini" ? "A Gemini beállításai elmentve." : "Elmentve. Ez az AI-szolgáltató még nincs bekötve."
         : "Beállítások elmentve.");
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "A mentés nem sikerült. Próbáld újra.");
