@@ -1,6 +1,7 @@
 "use client";
 
 import { Header } from "@/components/layout/header";
+import { ConversationTestChat } from "@/components/conversations/test-chat";
 import { fetchList } from "@/lib/fetch-list";
 import {
   MessageCircle,
@@ -205,6 +206,7 @@ export default function ConversationsPage() {
       <Header
         title="Conversations"
         description="Manage all customer interactions"
+        actions={<ConversationTestChat />}
       />
 
       <div className="flex-1 flex overflow-hidden">
