@@ -2,6 +2,10 @@
 
 Open Settings → Integrations → respond.io. The integration is disabled by default and does not create a provider subscription or a WhatsApp account.
 
+To use it as the primary WhatsApp channel, first configure and enable the integration, then open Channels → WhatsApp → respond.io, turn on the channel switch and Save. Selecting a tab alone does not save it. The channel is shown as configured, not as a verified live connection. The Chrome extension heartbeat preserves this mode. To return to the local browser, select Chrome extension and Save.
+
+For fallback-only use, keep Chrome extension as the primary channel, enable the respond.io integration, and choose respond.io under Settings → Integrations → WhatsApp fallback. Save the fallback settings separately. Switching the primary channel does not change this fallback selection. Conversations already received through a provider retain their reply routing.
+
 1. In respond.io Settings → Integrations → Developer API, create an access token. API access requires Growth or higher.
 2. Identify the numeric ID of the WhatsApp channel in your respond.io workspace (Developer API: List channels). Use the WhatsApp channel you intend to send through, not a contact ID.
 3. Create a respond.io webhook for **New Incoming Message**, pointing at the webhook URL shown in Owly. Webhooks require Advanced or higher.

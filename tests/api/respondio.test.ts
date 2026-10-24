@@ -4,6 +4,7 @@ import { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { POST } from "@/app/api/integrations/whatsapp/[provider]/inbound/route";
 import { GET as channels } from "@/app/api/channels/route";
+import { PUT as saveChannel } from "@/app/api/channels/[type]/route";
 import { GET as providers, PUT } from "@/app/api/integrations/whatsapp/providers/route";
 vi.mock("@/lib/customer-resolver", () => ({ resolveCustomer: vi.fn().mockResolvedValue("customer-1") }));
 const db = prisma as unknown as Record<string, Record<string, ReturnType<typeof vi.fn>>>;
@@ -76,5 +77,29 @@ describe("respond.io credential redaction", () => {
     const response = await PUT(new NextRequest("https://owly.test/api/integrations/whatsapp/providers", { method: "PUT", body: JSON.stringify({ fallbackEnabled: false, fallbackProvider: "respondio", infobip: { baseUrl: "", sender: "" }, peach: { flowId: "" }, respondio: { enabled: true, channelId: "42", apiKey: "", signingKey: "" } }) }));
     expect(response.status).toBe(200);
     expect(db.channel.upsert.mock.calls[0][0].update.config.providerSettings.respondio).toEqual(settings);
+  });
+  it("saves respond.io as primary without changing fallback or losing credentials", async () => {
+    const config = { providerSettings: { respondio: settings }, fallbackEnabled: true, fallbackProvider: "respondio", mode: "browser" };
+    db.channel.findUnique.mockResolvedValue({ config });
+    db.channel.upsert.mockImplementation(async input => ({ type: "whatsapp", ...input.update }));
+    const response = await saveChannel(new NextRequest("https://owly.test/api/channels/whatsapp", { method: "PUT", body: JSON.stringify({ isActive: true, config: { mode: "respondio" } }) }), { params: Promise.resolve({ type: "whatsapp" }) });
+    expect(response.status).toBe(200);
+    const saved = db.channel.upsert.mock.calls[0][0].update;
+    expect(saved.config).toMatchObject({ primaryProvider: "respondio", fallbackEnabled: true, fallbackProvider: "respondio", providerSettings: { respondio: settings } });
+    const body = JSON.stringify(await response.json());
+    expect(body).not.toContain(settings.apiKey);
+    expect(body).not.toContain(settings.signingKey);
+  });
+  it("refuses to enable an unconfigured primary respond.io channel", async () => {
+    db.channel.findUnique.mockResolvedValue({ config: {} });
+    const response = await saveChannel(new NextRequest("https://owly.test/api/channels/whatsapp", { method: "PUT", body: JSON.stringify({ isActive: true, config: { mode: "respondio" } }) }), { params: Promise.resolve({ type: "whatsapp" }) });
+    expect(response.status).toBe(409);
+    expect(db.channel.upsert).not.toHaveBeenCalled();
+  });
+  it("clears primary routing when switching back to browser but preserves fallback", async () => {
+    db.channel.findUnique.mockResolvedValue({ config: { mode: "respondio", primaryProvider: "respondio", fallbackEnabled: true, fallbackProvider: "respondio", providerSettings: { respondio: settings } } });
+    db.channel.upsert.mockImplementation(async input => ({ type: "whatsapp", ...input.update }));
+    await saveChannel(new NextRequest("https://owly.test/api/channels/whatsapp", { method: "PUT", body: JSON.stringify({ config: { mode: "browser" } }) }), { params: Promise.resolve({ type: "whatsapp" }) });
+    expect(db.channel.upsert.mock.calls[0][0].update.config).toMatchObject({ mode: "browser", primaryProvider: "", fallbackEnabled: true, fallbackProvider: "respondio" });
   });
 });

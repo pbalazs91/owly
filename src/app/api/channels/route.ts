@@ -46,6 +46,9 @@ export async function GET(request: NextRequest) {
       const existing = channelMap.get(type);
       if (existing) {
         const config = existing.config as Record<string, unknown>;
+        if (type === "whatsapp" && config.mode === "respondio") {
+          return publicChannel({ ...existing, status: "disconnected" });
+        }
         if (type === "whatsapp" && config.mode === "api") {
           return publicChannel({ ...existing, status: "disconnected", isActive: false });
         }
@@ -99,6 +102,17 @@ export async function POST(request: NextRequest) {
         ...(config as Record<string, unknown>),
         ...(oldConfig.providerSettings ? { providerSettings: oldConfig.providerSettings } : {}),
       };
+    }
+    if (type === "whatsapp" && mergedConfig && typeof mergedConfig === "object") {
+      const settings = mergedConfig as Record<string, unknown>;
+      settings.primaryProvider = settings.mode === "respondio" ? "respondio" : "";
+      if (settings.mode === "respondio" && isActive === true) {
+        const providers = (settings.providerSettings || {}) as Record<string, Record<string, unknown>>;
+        const value = providers.respondio || {};
+        if (value.enabled !== true || !value.apiKey || !value.signingKey || !value.channelId) {
+          return NextResponse.json({ error: "Előbb állítsd be és engedélyezd a respond.io integrációt." }, { status: 409 });
+        }
+      }
     }
     const channel = await prisma.channel.upsert({
       where: { type },

@@ -26,6 +26,16 @@ beforeEach(() => {
 });
 
 describe("Restricted WhatsApp browser connection", () => {
+  it("does not replace a selected respond.io primary channel on heartbeat", async () => {
+    db.channel.findUnique.mockResolvedValue({ isActive: true, config: { mode: "respondio", primaryProvider: "respondio", browserTokenId: "test-pair" } });
+    const response = await POST(request({ action: "heartbeat", status: "connected", enabled: true }));
+    expect(response.status).toBe(200);
+    const data = db.channel.update.mock.calls[0][0].data;
+    expect(data.config.mode).toBe("respondio");
+    expect(data.config.primaryProvider).toBe("respondio");
+    expect(data).not.toHaveProperty("isActive");
+    expect(data).not.toHaveProperty("status");
+  });
   it("prevents the legacy AI pipeline while reply-only RocketSender mode is active", async () => {
     db.rocketIntegration.findUnique.mockResolvedValueOnce({ mode: "trial" });
     expect((await POST(request({ action: "incoming", chatId: "123@c.us", id: "test", content: "Szia" }))).status).toBe(409);

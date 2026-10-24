@@ -82,7 +82,13 @@ export async function POST(
       const configRow = await prisma.channel.findUnique({ where: { type: "whatsapp" } });
       const config = (configRow?.config || {}) as Record<string, unknown>;
       const providerSettings = (config.providerSettings || {}) as Record<string, Record<string, unknown>>;
-      const candidate = metadata.whatsappProvider || config.primaryProvider;
+      const candidate = metadata.whatsappProvider || (config.mode === "respondio" && !configRow?.isActive ? null : config.primaryProvider);
+      if (config.mode === "respondio" && !configRow?.isActive && candidate === "respondio") {
+        return NextResponse.json({ error: "A respond.io elsődleges csatorna ki van kapcsolva." }, { status: 409 });
+      }
+      if (config.mode === "respondio" && !configRow?.isActive && !metadata.whatsappProvider) {
+        return NextResponse.json({ error: "A respond.io elsődleges csatorna ki van kapcsolva." }, { status: 409 });
+      }
       if (candidate === "infobip" || candidate === "peach" || candidate === "respondio") {
         provider = candidate;
         try {

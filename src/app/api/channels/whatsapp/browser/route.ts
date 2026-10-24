@@ -116,8 +116,8 @@ export async function POST(request: NextRequest) {
       const pending = !!config.browserControlRevision && !acknowledged;
       const enabled = typeof body.enabled === "boolean" ? body.enabled : status.data === "connected";
       await prisma.channel.update({ where: { type: "whatsapp" }, data: {
-        status: status.data === "connected" ? "connected" : "disconnected", isActive: status.data === "connected" && enabled,
-        config: { ...config, mode: "browser", browserStatus: status.data, browserLastSeen: new Date().toISOString(),
+        ...(!config.mode || config.mode === "browser" ? { status: status.data === "connected" ? "connected" : "disconnected", isActive: status.data === "connected" && enabled } : {}),
+        config: { ...config, mode: config.mode || "browser", browserStatus: status.data, browserLastSeen: new Date().toISOString(),
           ...(typeof body.enabled === "boolean" ? { browserEnabled: enabled } : {}),
           ...(body.protocol === 2 ? { browserProtocol: 2 } : {}),
           ...(typeof body.version === "string" && /^\d+\.\d+\.\d+$/.test(body.version) ? { browserVersion: body.version.slice(0, 32) } : {}),

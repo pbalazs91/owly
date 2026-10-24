@@ -7,8 +7,9 @@ const CHANNEL_TYPES = ["whatsapp", "email", "phone", "sms", "telegram"];
 function redactProviderSecrets(channel: { config: unknown; [key: string]: unknown }) {
   const config = { ...((channel.config || {}) as Record<string, unknown>) };
   const providers = (config.providerSettings || {}) as Record<string, Record<string, unknown>>;
-  if (providers.infobip || providers.peach) {
+  if (config.providerSettings) {
     config.providerSettings = {
+      respondio: { enabled: providers.respondio?.enabled === true, channelId: providers.respondio?.channelId || "", hasApiKey: !!providers.respondio?.apiKey, hasSigningKey: !!providers.respondio?.signingKey },
       infobip: { baseUrl: providers.infobip?.baseUrl || "", sender: providers.infobip?.sender || "", hasApiKey: !!providers.infobip?.apiKey, hasWebhookToken: !!providers.infobip?.webhookToken },
       peach: { flowId: providers.peach?.flowId || "", hasApiKey: !!providers.peach?.apiKey, hasWebhookToken: !!providers.peach?.webhookToken },
     };
@@ -88,12 +89,23 @@ export async function PUT(request: NextRequest, context: RouteContext) {
       };
     }
 
+    if (type === "whatsapp" && mergedConfig && typeof mergedConfig === "object") {
+      const settings = mergedConfig as Record<string, unknown>;
+      settings.primaryProvider = settings.mode === "respondio" ? "respondio" : "";
+      if (settings.mode === "respondio" && (typeof isActive === "boolean" ? isActive : existing?.isActive)) {
+        const providers = (settings.providerSettings || {}) as Record<string, Record<string, unknown>>;
+        const value = providers.respondio || {};
+        if (value.enabled !== true || !value.apiKey || !value.signingKey || !value.channelId) {
+          return NextResponse.json({ error: "Előbb állítsd be és engedélyezd a respond.io integrációt." }, { status: 409 });
+        }
+      }
+    }
     const channel = await prisma.channel.upsert({
       where: { type },
       update: {
         isActive: typeof isActive === "boolean" ? isActive : undefined,
         config: mergedConfig ?? undefined,
-        status: status ?? undefined,
+        status: (mergedConfig as Record<string, unknown> | undefined)?.mode === "respondio" ? "disconnected" : status ?? undefined,
       },
       create: {
         type,

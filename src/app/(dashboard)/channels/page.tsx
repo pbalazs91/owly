@@ -34,7 +34,7 @@ interface ChannelData {
   status: string;
 }
 
-type WhatsAppMode = "web" | "api" | "browser";
+type WhatsAppMode = "web" | "api" | "browser" | "respondio";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -157,7 +157,7 @@ function WhatsAppCard({
   const [isActive, setIsActive] = useState(channel.isActive);
   const [browserControlTarget, setBrowserControlTarget] = useState<HTMLDivElement | null>(null);
   const [mode, setMode] = useState<WhatsAppMode>(
-    cfg.mode === "api" ? "api" : "browser"
+    cfg.mode === "respondio" ? "respondio" : cfg.mode === "api" ? "api" : "browser"
   );
   const [apiKey, setApiKey] = useState(cfg.apiKey || "");
   const [phoneNumber, setPhoneNumber] = useState(cfg.phoneNumber || "");
@@ -166,6 +166,8 @@ function WhatsAppCard({
   const [connectionError, setConnectionError] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isConnected = channel.status === "connected";
+  const respondio = ((channel.config.providerSettings as Record<string, unknown> | undefined)?.respondio || {}) as Record<string, unknown>;
+  const respondioReady = respondio.enabled === true && !!respondio.channelId && respondio.hasApiKey === true && respondio.hasSigningKey === true;
 
   // Poll WhatsApp status while connecting to get QR code updates
   useEffect(() => {
@@ -236,6 +238,7 @@ function WhatsAppCard({
           <div ref={setBrowserControlTarget} className="flex items-center gap-3">
             {mode === "api" && <span className="text-xs text-amber-700">Nincs ellenőrzött API-kapcsolat</span>}
             {mode === "web" && <StatusBadge status={channel.status} />}
+            {mode === "respondio" && <Toggle enabled={isActive} onChange={setIsActive} />}
           </div>
         </div>
       </div>
@@ -247,7 +250,7 @@ function WhatsAppCard({
           <label className="block text-xs font-medium text-owly-text-light mb-2">
             Connection Method
           </label>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button type="button" onClick={() => setMode("browser")} className={cn("flex-1 px-3 py-2 text-sm font-medium rounded-lg border", mode === "browser" ? "border-green-300 bg-green-50 text-green-700" : "border-owly-border text-owly-text-light")}>
               Chrome-bővítmény
             </button>
@@ -279,11 +282,17 @@ function WhatsAppCard({
               <Key className="h-4 w-4" />
               API
             </button>
+            <button type="button" onClick={() => setMode("respondio")} className={cn("flex-1 px-3 py-2 text-sm font-medium rounded-lg border", mode === "respondio" ? "border-green-300 bg-green-50 text-green-700" : "border-owly-border text-owly-text-light")}>respond.io</button>
           </div>
           <p className="mt-2 text-xs text-owly-text-light">A Szerveres Web ezen az ingyenes kiszolgálón nem érhető el: az 512 MB memória nem elegendő a WhatsApp böngészőjéhez. Használd a Chrome-bővítményt.</p>
         </div>
 
-        {mode === "browser" ? <BrowserWhatsApp controlTarget={browserControlTarget} /> : mode === "web" ? (
+        {mode === "respondio" ? <div className="space-y-3 text-sm">
+          <p className="rounded-lg border border-owly-border bg-owly-bg p-3">{respondioReady ? "A respond.io adatai be vannak állítva. Az élő küldést és fogadást külön próbával ellenőrizd." : "Előbb add meg és engedélyezd a respond.io kapcsolatot az Integrációk oldalon."}</p>
+          <p>A kapcsoló és a Mentés gomb a respond.io-t állítja be elsődleges WhatsApp-csatornának. Az inboxból az ezen a csatornán érkezett beszélgetésekre is válaszolhatsz.</p>
+          <p>A tartalék küldés ettől külön beállítás: másik elsődleges csatorna mellett is választhatod a respond.io-t a 15 perces tartalék küldéshez.</p>
+          <a className="inline-block text-owly-primary underline" href="/settings/integrations#respondio">respond.io és tartalék küldés beállítása</a>
+        </div> : mode === "browser" ? <BrowserWhatsApp controlTarget={browserControlTarget} /> : mode === "web" ? (
           <div>
             {isConnected ? (
               <div className="rounded-lg border border-green-200 bg-green-50 p-4">
@@ -371,14 +380,14 @@ function WhatsAppCard({
       </div>
 
       {/* Footer */}
-      {mode !== "browser" && <div className="px-5 py-3 border-t border-owly-border bg-owly-bg/50">
+      <div className="px-5 py-3 border-t border-owly-border bg-owly-bg/50">
         <button
           type="button"
           disabled={saving}
           onClick={() =>
             onSave(
               "whatsapp",
-              { ...cfg, mode, apiKey, phoneNumber },
+              { ...cfg, mode, apiKey, phoneNumber, primaryProvider: mode === "respondio" ? "respondio" : "" },
               isActive
             )
           }
@@ -391,7 +400,7 @@ function WhatsAppCard({
           )}
           Save
         </button>
-      </div>}
+      </div>
     </div>
   );
 }
