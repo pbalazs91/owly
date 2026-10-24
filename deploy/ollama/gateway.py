@@ -62,6 +62,8 @@ class Handler(BaseHTTPRequestHandler):
                     options["num_ctx"] = 2048
                     options["num_predict"] = min(512, max(1, int(options.get("num_predict", 256))))
                 else:
+                    body["reasoning_effort"] = "none"
+                    body.pop("reasoning", None)
                     body["max_tokens"] = min(512, max(1, int(body.get("max_tokens", 256))))
                 data = json.dumps(body).encode()
             except (ValueError, TypeError, TimeoutError):
