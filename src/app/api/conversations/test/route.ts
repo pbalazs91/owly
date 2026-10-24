@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       answer = result.candidates?.[0]?.content?.parts?.map(part => part.text || "").join("\n").trim() || "";
     } else {
       const base = process.env.OLLAMA_BASE_URL!.replace(/\/+$/, "").replace(/\/v1$/, "");
-      const result = await fetch(base + "/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: settings.aiModel, messages: [{ role: "system", content: system }, ...parsed.data.messages], stream: false, options: { num_predict: settings.maxTokens, temperature: settings.temperature } }), signal: AbortSignal.timeout(45000) });
+      const result = await fetch(base + "/api/chat", { method: "POST", headers: { "Content-Type": "application/json", ...(process.env.OLLAMA_API_KEY ? { Authorization: `Bearer ${process.env.OLLAMA_API_KEY}` } : {}) }, body: JSON.stringify({ model: settings.aiModel, messages: [{ role: "system", content: system }, ...parsed.data.messages], stream: false, ...(settings.aiModel.startsWith("qwen3") ? { think: false } : {}), options: { num_predict: settings.maxTokens, temperature: settings.temperature } }), signal: AbortSignal.timeout(45000) });
       if (!result.ok) throw new Error("PROVIDER_FAILED");
       const value = await result.json();
       answer = typeof value.message?.content === "string" ? value.message.content.trim() : "";

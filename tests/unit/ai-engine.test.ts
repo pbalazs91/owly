@@ -23,6 +23,7 @@ describe("AI Engine", () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     mockOpenAICreateFn.mockReset();
     mockOpenAIConfig = undefined;
 
@@ -133,6 +134,16 @@ describe("AI Engine", () => {
     expect(response).toBe("Ollama reply");
     expect(mockOpenAIConfig).toEqual({ apiKey: "ollama", baseURL: "http://127.0.0.1:11434/v1" });
     expect(mockOpenAICreateFn).toHaveBeenCalledWith(expect.objectContaining({ model: "llama3.2:3b" }));
+  });
+
+  it("authenticates the remote Ollama OpenAI-compatible endpoint", async () => {
+    vi.stubEnv("OLLAMA_BASE_URL", "https://example.com/ollama");
+    vi.stubEnv("OLLAMA_API_KEY", "test-remote-secret");
+    mockPrisma.settings.findFirst.mockResolvedValue({ id: "default", aiProvider: "ollama", aiModel: "qwen3:0.6b", aiApiKey: "", maxTokens: 100, temperature: 0.5, businessName: "Test", businessDesc: "", tone: "friendly", language: "auto" });
+    mockOpenAICreateFn.mockResolvedValue({ choices: [{ finish_reason: "stop", message: { content: "Szia!" } }] });
+    const { chat } = await import("@/lib/ai/engine");
+    expect(await chat("conv-1", "Hello")).toBe("Szia!");
+    expect(mockOpenAIConfig).toEqual({ apiKey: "test-remote-secret", baseURL: "https://example.com/ollama/v1" });
   });
 
   it("should generate responses through Gemini with system instructions and tool declarations", async () => {

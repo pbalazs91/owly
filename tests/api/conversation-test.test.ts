@@ -52,6 +52,16 @@ describe("isolated Conversations test chat", () => {
     expect((await result.json()).error).toContain("saját gépeden");
     expect(generateGeminiContent).not.toHaveBeenCalled();
   });
+  it("authenticates remote Ollama and keeps its key out of responses", async () => {
+    vi.stubEnv("OLLAMA_BASE_URL", "https://example.com/ollama/v1/");
+    vi.stubEnv("OLLAMA_API_KEY", "test-remote-secret");
+    db.settings.findUnique.mockResolvedValue({ ...settings, aiProvider: "ollama", aiModel: "qwen3:0.6b", aiApiKey: "" });
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(JSON.stringify({ message: { content: "Szia!" } }), { status: 200 }));
+    const result = await send();
+    expect(fetchMock).toHaveBeenCalledWith("https://example.com/ollama/api/chat", expect.objectContaining({ headers: { "Content-Type": "application/json", Authorization: "Bearer test-remote-secret" }, body: expect.stringContaining('"think":false') }));
+    expect(await result.json()).toEqual({ response: "Szia!", provider: "ollama", model: "qwen3:0.6b", knowledgeEntries: 1 });
+    fetchMock.mockRestore();
+  });
   it("does not expose provider errors or credentials", async () => {
     vi.mocked(generateGeminiContent).mockRejectedValue(new Error("upstream error with not-a-real-key"));
     const result = await send();
