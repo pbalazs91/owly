@@ -223,7 +223,7 @@ async function callAI(
 
   const ollamaBase = (process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434").replace(/\/+$/, "");
   const openai = new OpenAI({
-    apiKey: config.provider === "ollama" ? "ollama" : config.apiKey,
+    apiKey: config.provider === "ollama" ? (process.env.OLLAMA_API_KEY || "ollama") : config.apiKey,
     ...(config.provider === "ollama" && {
       baseURL: ollamaBase.endsWith("/v1") ? ollamaBase : `${ollamaBase}/v1`,
     }),
