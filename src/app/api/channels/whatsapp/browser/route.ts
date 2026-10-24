@@ -162,6 +162,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.action === "incoming") {
+      if (config.mode === "respondio") return json({ error: "A respond.io az elsődleges csatorna; a bővítményes AI-feldolgozás szünetel." }, 409);
       const rocket = await prisma.rocketIntegration.findUnique({ where: { id: "default" } });
       if (rocket && rocket.mode !== "disabled") return json({ error: "RocketSender módban csak a válaszimport használható. Töltsd újra a 0.4.0-s bővítményt." }, 409);
       if (config.browserDesiredEnabled === false) return json({ error: "Az üzenetfeldolgozás szünetel." }, 409);
@@ -227,6 +228,7 @@ Tudásbázis:\n${context || "Még nincs vállalati tudásbázis."}`;
     }
 
     if (body.action === "canSend") {
+      if (config.mode === "respondio") return json({ allowed: false });
       const parsed = z.object({ messageId: z.string().regex(/^wab-[a-f0-9]{64}$/) }).safeParse(body);
       if (!parsed.success) return json({ error: "Hibás válaszazonosító." }, 400);
       return json({ allowed: await canSendOwlyReply(parsed.data.messageId) });
