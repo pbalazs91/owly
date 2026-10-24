@@ -448,6 +448,7 @@ function AISection({
       { value: "claude-3-haiku-20240307", label: "Claude 3 Haiku" },
     ],
     ollama: [
+      { value: "qwen3:0.6b", label: "Qwen3 0.6B" },
       { value: "llama3.2:3b", label: "Llama 3.2 3B (helyi, telepítve)" },
       { value: "llama3", label: "Llama 3" },
       { value: "mistral", label: "Mistral" },
@@ -457,7 +458,7 @@ function AISection({
 
   return (
     <div className="space-y-5">
-      <FormField label="AI Provider" description="Ollama runs on your computer through the WhatsApp Chrome extension. Render cannot connect to Ollama running only on this computer.">
+      <FormField label="AI Provider" description="Ollama can run on a connected server or locally through the WhatsApp Chrome extension.">
         <SelectInput
           value={data.aiProvider}
           onChange={(v) => {
@@ -468,7 +469,7 @@ function AISection({
             }
           }}
           options={[
-            { value: "ollama", label: "Ollama (Local, primary for WhatsApp extension)" },
+            { value: "ollama", label: "Ollama (connected server or local)" },
             { value: "openai", label: "OpenAI" },
             { value: "gemini", label: "Google Gemini" },
             { value: "claude", label: "Claude (Anthropic)" },
@@ -477,7 +478,7 @@ function AISection({
       </FormField>
       {data.aiProvider !== "openai" && data.aiProvider !== "gemini" && (
         <p role="status" className="text-sm text-owly-danger">
-          {data.aiProvider === "ollama" ? "Az Ollama az elsődleges AI a helyi WhatsApp-bővítményhez. Válaszd ki a gépeden telepített modellt, majd a bővítményben kapcsold be a kapcsolatot. A Renderen futó szerver önmagában nem tudja elérni a gépeden futó Ollamát." : "A Claude ebben a verzióban még nincs bekötve a válaszadáshoz."}
+          {data.aiProvider === "ollama" ? "Válaszd ki a csatlakoztatott Ollama-szerveren telepített modellt. A szerverkapcsolatot a Tesztbeszélgetésben próbálhatod ki. A helyi Chrome-bővítmény a saját gépeden futó Ollamát használja." : "A Claude ebben a verzióban még nincs bekötve a válaszadáshoz."}
         </p>
       )}
       {data.aiProvider === "gemini" && (
@@ -852,7 +853,7 @@ export default function SettingsPage() {
         return next;
       });
       addToast("success", activeTab === "ai" && saved.aiProvider !== "openai"
-        ? saved.aiProvider === "ollama" ? "Elmentve. Az Ollama a bekapcsolt Chrome-bővítményen keresztül működik." : saved.aiProvider === "gemini" ? "A Gemini beállításai elmentve." : "Elmentve. Ez az AI-szolgáltató még nincs bekötve."
+        ? saved.aiProvider === "ollama" ? "Az Ollama beállításai elmentve. A szerverkapcsolatot a Tesztbeszélgetésben ellenőrizheted." : saved.aiProvider === "gemini" ? "A Gemini beállításai elmentve." : "Elmentve. Ez az AI-szolgáltató még nincs bekötve."
         : "Beállítások elmentve.");
     } catch (error) {
       addToast("error", error instanceof Error ? error.message : "A mentés nem sikerült. Próbáld újra.");
